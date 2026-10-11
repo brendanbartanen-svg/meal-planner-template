@@ -1,0 +1,6 @@
+.DS_Store
+.claude/settings.local.json
+
+# app: local-only state (captures, checks, passcode, run stats) + deps
+app/node_modules/
+app/data/

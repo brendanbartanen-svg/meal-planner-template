@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Meal Planner app, always-on. This file is a TEMPLATE: the two
+       double-underscore placeholders below (app directory, log file) are
+       filled in by app/launchd/install.sh, which writes the rendered copy to
+       ~/Library/LaunchAgents/ and loads it. Don't copy this file there by
+       hand.
+       Install:   app/launchd/install.sh
+       Restart:   app/launchd/install.sh restart
+                  (refuses while GET /api/run shows active:true — run state
+                  is in-memory and a restart kills an in-flight run)
+       Remove:    app/launchd/install.sh uninstall -->
+  <key>Label</key><string>com.mealplanner.app</string>
+  <!-- launchd provides a bare environment and nvm only initializes in
+       interactive shells, so source nvm.sh explicitly; this also tracks the
+       nvm default alias across future node upgrades. The Homebrew bin dirs
+       are appended as a fallback for a non-nvm node. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] &amp;&amp; . "$NVM_DIR/nvm.sh"; export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"; exec npm start</string>
+  </array>
+  <key>WorkingDirectory</key><string>__APP_DIR__</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__LOG_FILE__</string>
+  <key>StandardErrorPath</key><string>__LOG_FILE__</string>
+</dict>
+</plist>

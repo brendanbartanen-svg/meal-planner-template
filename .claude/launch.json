@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "meal-app",
+      "url": "http://localhost:4316",
+      "port": 4316
+    }
+  ]
+}
