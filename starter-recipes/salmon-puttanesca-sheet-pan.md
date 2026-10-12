@@ -1,5 +1,6 @@
 ---
 name: Sheet-Pan Salmon Puttanesca with Crispy Potatoes
+description: "Salmon roasted over blistered tomatoes, olives, capers and garlic that crush into a briny, spicy sauce, with crispy roasted gold potatoes."
 cuisine: italian
 protein: salmon
 method: [sheet-pan, oven]

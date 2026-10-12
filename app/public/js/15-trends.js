@@ -28,11 +28,14 @@ const TR_PH = 52;        // plot height of a line/dot panel
 const TR_LANES = ['chicken', 'fish', 'plant', 'red', 'other'];
 const TR_LANE_LABEL = { chicken: 'chicken', fish: 'fish', plant: 'plant', red: 'red meat', other: 'other' };
 
-const trWk = (w) => `W${String(w).slice(-2)}`;
+// Weeks are named by their dates (each trends week carries start/end), plus
+// "this week" / "last week" when state.weeks knows the id — never by id.
+const trStart = (w) => fmtDay(w.start); // "Oct 10": a week's short name in labels and the table
+const trRel = (w) => (state?.weeks?.[w.week]?.rel ? weekName(w.week) : '');
 const trF = (n) => Math.round(n * 10) / 10;
 function trRange(a, b) {
   const pa = dpart(a), pb = dpart(b);
-  return pa.m === pb.m ? `${MONTHS[pa.m - 1]} ${pa.d}–${pb.d}` : `${MONTHS[pa.m - 1]} ${pa.d} – ${MONTHS[pb.m - 1]} ${pb.d}`;
+  return pa.m === pb.m ? `${MONTHS[pa.m - 1]} ${pa.d}–${pb.d}` : `${MONTHS[pa.m - 1]} ${pa.d}–${MONTHS[pb.m - 1]} ${pb.d}`;
 }
 const trLogged = (w) => w.cooked + w.skipped > 0;
 
@@ -171,7 +174,8 @@ function trendsBodyHtml(d, W) {
 
 function trSelHtml(weeks, si) {
   const w = weeks[si];
-  return `<span><b>${esc(trWk(w.week))}</b> · ${esc(trRange(w.start, w.end))}${w.inProgress ? ' · in progress' : ''}</span>
+  const bits = [trRel(w), w.inProgress ? 'in progress' : ''].filter(Boolean);
+  return `<span><b>${esc(trRange(w.start, w.end))}</b>${bits.length ? ` · ${esc(bits.join(' · '))}` : ''}</span>
     <span class="tr-hint">tap a week</span>`;
 }
 
@@ -235,7 +239,7 @@ function trLinePanel(weeks, W, si, opt) {
     const cls = `tr-dot${opt.dotCls ? ` ${opt.dotCls}` : ''}${weeks[i].inProgress ? ' tr-ip' : ''}`;
     s += `<circle class="${cls}" cx="${trF(X(i))}" cy="${trF(Y(v))}" r="${i === si ? 5 : 4}"/>`;
   });
-  const label = `${opt.title}, by week: ${weeks.map((w, i) => `${trWk(w.week)} ${vals[i] === null ? 'no data' : opt.fmt(vals[i])}`).join(', ')}`;
+  const label = `${opt.title}, by week starting: ${weeks.map((w, i) => `${trStart(w)} ${vals[i] === null ? 'no data' : opt.fmt(vals[i])}`).join(', ')}`;
   const sv = vals[si];
   return trPanelHead(opt.title, sv === null ? '—' : opt.fmt(sv)) + trSvg(W, H, label, s);
 }
@@ -265,7 +269,7 @@ function trNightsPanel(weeks, W, si) {
   const extra = [w.skipped && `${w.skipped} skipped`, w.unlogged && `${w.unlogged} ${w.inProgress ? 'to go' : 'not logged'}`]
     .filter(Boolean).join(', ');
   const value = `${w.cooked} of ${w.planned}${extra ? ` · ${extra}` : ''}`;
-  const label = `Nights cooked of planned, by week: ${weeks.map((x) => `${trWk(x.week)} ${x.cooked} of ${x.planned}${x.skipped ? `, ${x.skipped} skipped` : ''}${x.unlogged ? `, ${x.unlogged} not logged` : ''}`).join('; ')}`;
+  const label = `Nights cooked of planned, by week starting: ${weeks.map((x) => `${trStart(x)} ${x.cooked} of ${x.planned}${x.skipped ? `, ${x.skipped} skipped` : ''}${x.unlogged ? `, ${x.unlogged} not logged` : ''}`).join('; ')}`;
   return trPanelHead('Nights cooked', value) + trSvg(W, H, label, s);
 }
 
@@ -290,20 +294,33 @@ function trLanesPanel(weeks, W, si) {
   });
   const w = weeks[si];
   const mix = rows.filter((l) => w.lanes[l]).map((l) => `${TR_LANE_LABEL[l]} ${w.lanes[l]}`).join(' · ') || 'none cooked';
-  const label = `Protein lanes, dinners cooked by week: ${weeks.map((x) => `${trWk(x.week)} ${rows.filter((l) => x.lanes[l]).map((l) => `${TR_LANE_LABEL[l]} ${x.lanes[l]}`).join(', ') || 'none'}`).join('; ')}`;
+  const label = `Protein lanes, dinners cooked by week starting: ${weeks.map((x) => `${trStart(x)} ${rows.filter((l) => x.lanes[l]).map((l) => `${TR_LANE_LABEL[l]} ${x.lanes[l]}`).join(', ') || 'none'}`).join('; ')}`;
   return trPanelHead('Protein lanes', mix) + trSvg(W, H, label, s);
 }
 
+// The x-axis is a calendar strip: each week's first day-of-month under its
+// band, and on a second line the month's name under the first labeled week
+// of each month ("5 12 19 26 3 10" over "Sep … Oct"). Thins to every other
+// (or third) week only when a band is too narrow for two digits.
 function trAxis(weeks, W, si) {
   const n = weeks.length;
-  const { X } = trGeom(n, W);
-  const every = n > 8 ? 3 : n > 4 ? 2 : 1;
+  const { band, X } = trGeom(n, W);
+  const every = band >= 16 ? 1 : band >= 9 ? 2 : 3;
   let s = '';
+  const months = []; // [x, name] where the month changes
+  let lastM = null;
   weeks.forEach((w, i) => {
     if ((n - 1 - i) % every) return;
-    s += `<text class="tr-tick${i === si ? ' tr-on' : ''}" x="${trF(X(i))}" y="11" text-anchor="middle">${esc(trWk(w.week))}</text>`;
+    const p = dpart(w.start);
+    s += `<text class="tr-tick${i === si ? ' tr-on' : ''}" x="${trF(X(i))}" y="11" text-anchor="middle">${p.d}</text>`;
+    if (p.m !== lastM) { months.push([X(i), MONTHS[p.m - 1]]); lastM = p.m; }
   });
-  return `<svg class="tr-axis" viewBox="0 0 ${W} 15" width="${W}" height="15" aria-hidden="true">${s}</svg>`;
+  // a month that only covers the first labeled week would crowd the next name: drop it
+  months.forEach(([x, name], k) => {
+    if (months[k + 1] && months[k + 1][0] - x < 26) return;
+    s += `<text class="tr-tick" x="${trF(x)}" y="25" text-anchor="middle">${name}</text>`;
+  });
+  return `<svg class="tr-axis" viewBox="0 0 ${W} 29" width="${W}" height="29" aria-hidden="true">${s}</svg>`;
 }
 
 function trPlotsHtml(weeks, W, si) {
@@ -327,7 +344,7 @@ function trPlotsHtml(weeks, W, si) {
     + trAxis(weeks, W, si)
     + `<div class="tr-legend">
         <span>${sw('tr-c', 4)}cooked</span><span>${sw('tr-s', 3.25)}skipped</span><span>${sw('tr-u', 4)}not logged</span>
-        ${ip ? `<span>${esc(trWk(ip.week))} in progress (faded)</span>` : ''}
+        ${ip ? `<span>${esc(trRel(ip) ? weekName(ip.week, 'Rel') : `Week of ${trStart(ip)}`)} in progress (faded)</span>` : ''}
       </div>`
     + (totals.length ? `<p class="tr-foot">${esc(weeks.length)} weeks: ${totals.map(([l, c]) => `${esc(TR_LANE_LABEL[l])} ${c}`).join(' · ')}</p>` : '');
 }
@@ -339,12 +356,12 @@ function trTableHtml(weeks) {
   const rows = weeks.slice().reverse().map((w) => {
     const a = w.avg || {};
     const lanes = TR_LANES.filter((l) => w.lanes[l]).map((l) => `${abbr[l]}${w.lanes[l]}`).join(' ') || '—';
-    return `<tr><th scope="row">${esc(trWk(w.week))}${w.inProgress ? '*' : ''}</th>
+    return `<tr><th scope="row">${esc(trStart(w))}${w.inProgress ? '*' : ''}</th>
       <td>${w.cooked}/${w.planned}</td><td>${num(a.calories)}</td><td>${num(a.protein_g)}</td><td>${num(a.carbs_g)}</td>
       <td>${num(a.fat_g)}</td><td>${num(a.fiber_g)}</td><td>${w.avgRating === null ? '—' : w.avgRating.toFixed(1)}</td><td>${esc(lanes)}</td></tr>`;
   }).join('');
   return `<div class="tr-tablewrap"><table class="tr-table">
     <caption>Per serving, averaged over the dinners cooked (recipe nutrition, else the plan's estimate). Lanes: C chicken · F fish · P plant · R red meat · O other.${weeks.some((w) => w.inProgress) ? ' * in progress.' : ''}</caption>
-    <thead><tr><th scope="col">Week</th><th scope="col">Cooked</th><th scope="col">Cal</th><th scope="col">Prot g</th><th scope="col">Carb g</th><th scope="col">Fat g</th><th scope="col">Fiber g</th><th scope="col">Rating</th><th scope="col">Lanes</th></tr></thead>
+    <thead><tr><th scope="col">Week of</th><th scope="col">Cooked</th><th scope="col">Cal</th><th scope="col">Prot g</th><th scope="col">Carb g</th><th scope="col">Fat g</th><th scope="col">Fiber g</th><th scope="col">Rating</th><th scope="col">Lanes</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }

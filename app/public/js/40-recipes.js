@@ -265,8 +265,9 @@ function ideaHtml(it, s, week) {
   let badge = '';
   let acts;
   if (s?.status === 'queued') {
-    badge = `<span class="tagfav">${week ? `In ${esc(week)}` : 'Queued'}</span>`;
-    acts = `<span class="idone">${week ? `Scheduled in ${esc(week)}` : 'Queued for the next plan'}${esc(who)}</span>
+    // a scheduled idea names its week: "Next week" / "Scheduled for next week"
+    badge = `<span class="tagfav">${week ? esc(weekName(week, 'Rel')) : 'Queued'}</span>`;
+    acts = `<span class="idone">${week ? `Scheduled for ${esc(weekName(week))}` : 'Queued for the next plan'}${esc(who)}</span>
       <button class="undo" data-idea="${id}" data-st="">Undo</button>`;
   } else if (s?.status === 'dismissed') {
     badge = '<span class="tagno">Not for me</span>';

@@ -18,7 +18,7 @@ const settingsOpen = () => !$('settings').hidden;
 let installPromptEvt = null;
 
 const RUN_LABELS = { propose: 'Propose', revise: 'Revise', lock: 'Lock', fold: 'Fold', 'shop-adjust': 'Shop tweak', review: 'Close out',
-  rescale: 'Rescale', ideas: 'Ideas', import: 'Import', ask: 'Ask Claude' };
+  rescale: 'Rescale', move: 'Move', ideas: 'Ideas', import: 'Import', ask: 'Ask Claude' };
 const modelLabel = (id) => (settingsData?.options.models ?? []).find((m) => m.id === id)?.label ?? id;
 
 function agoText(ms) {
@@ -97,6 +97,7 @@ async function putSettings(patch, okMsg = 'Saved — applies from the next run.'
     if (state && 'autoFold' in patch) { state.autoFold = j.values.autoFold; renderStrip(); }
   }
   renderSettings(); // success shows the new value; failure snaps the control back
+  return j;
 }
 
 function modelSelect(key, fallbackId) {
@@ -411,6 +412,9 @@ function pushTimeRow(key, label, hint) {
 function renderSettings() {
   const body = $('settings-body');
   if (!settingsData) { body.innerHTML = '<p class="set-hint">loading…</p>'; return; }
+  // a re-render (loadSettings / loadPushInfo landing) must not drop a place search being typed
+  const act = document.activeElement;
+  const keepQ = act && act.id === 'set-wx-q' ? [act.selectionStart, act.selectionEnd] : null;
   const d = settingsData;
   const chats = Object.keys(viewState.cookChats ?? {}).length;
   const theme = storedTheme();
@@ -440,6 +444,8 @@ function renderSettings() {
         ${d.options.foldQuietMin.map((n) => `<option value="${n}"${quietCur === n ? ' selected' : ''}>${n} min</option>`).join('')}
       </select></div>
   </section>
+
+  ${windowSettingsHtml()}
 
   ${phoneHtml()}
 
@@ -477,6 +483,11 @@ function renderSettings() {
     void putSettings({ autoFold: on === d.defaults.autoFold ? null : on });
   };
   wirePhone(body);
+  wireWindowSettings(body);
+  if (keepQ) {
+    const q = $('set-wx-q');
+    if (q) { q.focus({ preventScroll: true }); try { q.setSelectionRange(keepQ[0], keepQ[1]); } catch { /* type=search */ } }
+  }
   $('set-pass').onclick = setPasscode;
   const fg = $('set-forget');
   if (fg) fg.onclick = () => {
@@ -498,6 +509,144 @@ function renderSettings() {
     toast(`Cleared ${chats} sous-chef chat${chats === 1 ? '' : 's'}.`);
     renderSettings();
   };
+  // openSettingsAt(): scroll to a section once it exists (after the first load)
+  if (settingsScrollTo) {
+    const target = $(settingsScrollTo);
+    if (target) {
+      settingsScrollTo = null;
+      target.scrollIntoView({ block: 'start' });
+    }
+  }
+}
+
+/* ---------- Kitchen window (05-window.js draws it) ----------
+   The place and the unit are server settings (PUT /api/settings, passcode),
+   so every device shows the same window; the place comes from GET
+   /api/geocode (Open-Meteo, called by the server). "Show the window" is this
+   device only (localStorage, 05-window.js). The search state lives here so a
+   full re-render of the sheet keeps what's typed and found. */
+let wxSearch = { open: false, q: '', results: null, busy: false, error: '' };
+let wxSearchT = null;
+let wxSearchSeq = 0;
+let settingsScrollTo = null;
+const WX_SEARCH_IDLE = { open: false, q: '', results: null, busy: false, error: '' };
+
+/** Open the sheet at a section (the window's caption → 'set-window'). */
+function openSettingsAt(id) {
+  settingsScrollTo = id;
+  if (settingsOpen()) renderSettings(); else openSettings();
+}
+
+function wxResultsHtml() {
+  const s = wxSearch;
+  if (s.busy) return '<p class="set-hint wx-status">Searching…</p>';
+  if (s.error) return `<p class="set-hint wx-status set-bad">${esc(s.error)}</p>`;
+  if (!s.results) return '';
+  if (!s.results.length) return `<p class="set-hint wx-status">No place called “${esc(s.q.trim())}”. Try the town’s name on its own.</p>`;
+  return `<ul class="wx-results">${s.results.map((r, i) => `<li><button type="button" data-wx-pick="${i}"><b>${esc(r.name)}</b><small>${esc([r.admin1, r.country].filter(Boolean).join(', '))}</small></button></li>`).join('')}</ul>`;
+}
+function wxRenderResults() {
+  const el = $('set-wx-results');
+  if (!el) return;
+  el.innerHTML = wxResultsHtml();
+  el.querySelectorAll('[data-wx-pick]').forEach((b) => { b.onclick = () => { void wxPick(Number(b.dataset.wxPick)); }; });
+}
+
+function wxRunSearch() {
+  clearTimeout(wxSearchT);
+  const query = wxSearch.q.trim();
+  const seq = ++wxSearchSeq;
+  if (query.length < 2) { Object.assign(wxSearch, { results: null, busy: false, error: '' }); wxRenderResults(); return; }
+  Object.assign(wxSearch, { busy: true, error: '' });
+  wxRenderResults();
+  fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
+    .then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (seq !== wxSearchSeq) return; // a newer search owns the list
+      Object.assign(wxSearch, r.ok ? { busy: false, results: j.results ?? [] } : { busy: false, results: null, error: j.error || `Search failed (${r.status}).` });
+      wxRenderResults();
+    })
+    .catch(() => {
+      if (seq !== wxSearchSeq) return;
+      Object.assign(wxSearch, { busy: false, results: null, error: 'Server unreachable — try again.' });
+      wxRenderResults();
+    });
+}
+
+async function wxPick(i) {
+  const r = wxSearch.results?.[i];
+  if (!r) return;
+  const loc = { name: r.name, lat: r.lat, lon: r.lon, tz: r.tz || '' };
+  if (r.admin1) loc.admin1 = r.admin1;
+  if (r.country) loc.country = r.country;
+  const where = r.admin1 || r.country;
+  const ok = await putSettings({ location: loc }, `Saved — the window looks out on ${r.name}${where ? `, ${where}` : ''}.`);
+  if (!ok) return; // keep the results for another try
+  wxSearch = { ...WX_SEARCH_IDLE };
+  renderSettings();
+  void refreshWeather(true);
+}
+
+function windowSettingsHtml() {
+  const d = settingsData;
+  const loc = d.values.location;
+  const unit = d.values.tempUnit === 'C' ? 'C' : 'F';
+  const where = loc ? (loc.admin1 || loc.country || '') : '';
+  const searching = !loc || wxSearch.open;
+  return `<section class="set-sec" id="set-window">
+    <h3>Kitchen window</h3>
+    <p class="set-hint">The view over the sink at the top of the Week tab: the real sky, weather and season outside.</p>
+    <div class="set-row"><span class="lbl">Location<small>${loc ? 'weather from Open-Meteo, fetched by the Mac for every device' : 'not set — the window shows a clear sky on this device’s clock'}</small></span>
+      ${loc ? `<p class="wx-cur"><b>${esc(loc.name)}</b>${where ? `, ${esc(where)}` : ''}${wxSearch.open ? '' : ' · <button type="button" id="set-wx-change">change</button>'}</p>` : ''}
+      ${searching ? `<div class="wx-search">
+        <div class="formline"><input class="plain" type="search" id="set-wx-q" value="${esc(wxSearch.q)}" placeholder="Town or city" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="search" aria-label="Search for a town or city"><button class="ghost" type="button" id="set-wx-go">Search</button></div>
+        <div id="set-wx-results" aria-live="polite">${wxResultsHtml()}</div>
+        ${loc ? '<div class="set-actions"><button class="ghost" type="button" id="set-wx-cancel">Cancel</button><button class="ghost" type="button" id="set-wx-clear">Remove location</button></div>' : ''}
+      </div>` : ''}
+    </div>
+    <div class="set-row"><span class="lbl">Temperatures</span>
+      <div class="seg" role="radiogroup" aria-label="Temperature unit">
+        ${['F', 'C'].map((u) => `<label><input type="radio" name="set-wx-unit" value="${u}" ${unit === u ? 'checked' : ''}><span>°${u}</span></label>`).join('')}
+      </div></div>
+    <div class="set-row set-inline"><span class="lbl">Show the window<small>on this device</small></span>
+      <span class="switch"><input type="checkbox" id="set-wx-show" aria-label="Show the window" ${windowEnabled() ? 'checked' : ''}><span class="track"></span></span></div>
+  </section>`;
+}
+
+function wireWindowSettings(body) {
+  const q = $('set-wx-q');
+  if (q) {
+    q.oninput = () => {
+      wxSearch.q = q.value;
+      clearTimeout(wxSearchT);
+      wxSearchT = setTimeout(wxRunSearch, 450);
+    };
+    q.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); wxRunSearch(); } };
+  }
+  const go = $('set-wx-go');
+  if (go) go.onclick = () => { if (q) wxSearch.q = q.value; wxRunSearch(); };
+  wxRenderResults();
+  const change = $('set-wx-change');
+  if (change) change.onclick = () => { wxSearch = { ...WX_SEARCH_IDLE, open: true }; renderSettings(); $('set-wx-q')?.focus(); };
+  const cancel = $('set-wx-cancel');
+  if (cancel) cancel.onclick = () => { wxSearchSeq++; wxSearch = { ...WX_SEARCH_IDLE }; renderSettings(); };
+  const clear = $('set-wx-clear');
+  if (clear) clear.onclick = async () => {
+    const ok = await putSettings({ location: null }, 'Location removed — the window shows a clear sky on each device’s clock.');
+    if (!ok) return;
+    wxSearch = { ...WX_SEARCH_IDLE };
+    renderSettings();
+    void refreshWeather(true);
+  };
+  body.querySelectorAll('input[name="set-wx-unit"]').forEach((r) => {
+    r.onchange = async () => {
+      const v = r.value;
+      const ok = await putSettings({ tempUnit: v === settingsData.defaults.tempUnit ? null : v }, `Saved — temperatures in °${v}.`);
+      if (ok) void refreshWeather(true);
+    };
+  });
+  const show = $('set-wx-show');
+  if (show) show.onchange = () => setWindowEnabled(show.checked);
 }
 
 // Checks a passcode with an empty PUT (a no-op that still hits the gate)

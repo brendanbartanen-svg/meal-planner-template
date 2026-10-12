@@ -1,5 +1,6 @@
 ---
 name: Saag with Charred Crispy Tofu & Basmati
+description: "Cornstarch-crusted spiced tofu seared until charred and crisp, served over a creamy, gingery spinach saag with serrano heat and basmati rice."
 cuisine: indian
 protein: tofu
 method: [stovetop, skillet]

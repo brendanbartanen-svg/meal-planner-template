@@ -16,6 +16,13 @@ function slug(text: string): string {
 
 export const CHECK_KEY = /^\d{4}-W\d{2}:(prep|shop|extra):[a-z0-9][a-z0-9-]{0,79}$/;
 
+/**
+ * A Prep-timeline task's checkbox key, from its line text after `- [ ] ` (bold
+ * label included). The key IS the text: reword a task and its box comes back
+ * unticked (move.ts hands the move run the ticked lines for that reason).
+ */
+export const prepKey = (week: string, text: string): string => `${week}:prep:${slug(text)}`;
+
 // ---------- plan parsing ----------
 // The plan files' structure comes from plans/TEMPLATE.md and is pinned by the
 // run prompts; this parser is deliberately tolerant of the small drift the
@@ -26,6 +33,12 @@ export interface PlanMeal {
   mealType: string;
   dish: string;
   recipeFile?: string;
+  /**
+   * What the dish is, in one sentence: the recipe file's frontmatter
+   * `description`. Not in the plan file — /api/state joins it by recipeFile
+   * (repo.ts addDescriptions) for the Week tab's day cards.
+   */
+  description?: string;
   isNew: boolean;
   favRating?: number;
   /**
@@ -40,7 +53,16 @@ export interface PlanMeal {
   protein?: number;
   status: string; // proposed | approved | rejected | cooked | skipped | substituted | —
   flexible: boolean;
+  /**
+   * Where this dinner may be moved from the Week tab (server/move.ts), in the
+   * week's day order. Not in the plan file — /api/state sets it on the cooking
+   * week's meals only; absent or empty = not movable.
+   */
+  moveTo?: MoveTarget[];
 }
+
+/** One place a dinner can move to: a flexible night, or (with `swapsWith`, that night's dish) a swap. */
+export interface MoveTarget { day: DayName; date: string; swapsWith?: string }
 
 /** House default: recipes are written at 4 servings. */
 export const DEFAULT_SERVINGS = 4;
@@ -243,7 +265,7 @@ export function parsePlan(raw: string, file: string): ParsedPlan {
       if (isPlaceholder(text)) continue; // TEMPLATE.md placeholder ("- [ ] **Sat, night:** ..."), not a real task
       const label = text.match(/^\*\*([^*]+?):?\*\*:?/)?.[1]?.replace(/:$/, '') ?? '';
       plan.prep.push({
-        key: `${week}:prep:${slug(text)}`,
+        key: prepKey(week, text),
         label,
         text: stripMd(text.replace(/^\*\*[^*]+\*\*:?\s*/, '')),
         dueDate: label ? prepDueDate(label, week) : undefined,
@@ -303,6 +325,8 @@ export function parsePlan(raw: string, file: string): ParsedPlan {
 export interface RecipeMeta {
   file: string;
   name: string;
+  /** One sentence (≤ 160 chars) on what the dish is; `description: "…"` right after `name:`. */
+  description?: string;
   cuisine?: string;
   protein?: string;
   active_time_min?: number;
@@ -326,6 +350,15 @@ export function parseRecipe(raw: string, file: string): { meta: RecipeMeta; body
 
   let block: 'nutrition' | 'prep' | null = null;
   const unquote = (s: string) => s.replace(/^["']|["']$/g, '');
+  // A whole quoted scalar as plain text: colons and commas inside the quotes
+  // are just text, `\"` / `''` are unescaped. Unquoted values pass through.
+  const scalar = (s: string) => {
+    const dq = s.match(/^"((?:[^"\\]|\\.)*)"\s*(?:#.*)?$/);
+    if (dq) return dq[1]!.replace(/\\(["\\])/g, '$1').trim();
+    const sq = s.match(/^'((?:[^']|'')*)'\s*(?:#.*)?$/);
+    if (sq) return sq[1]!.replace(/''/g, "'").trim();
+    return s;
+  };
   for (const line of head) {
     const indented = /^\s/.test(line);
     const t = line.trim();
@@ -353,6 +386,7 @@ export function parseRecipe(raw: string, file: string): { meta: RecipeMeta; body
     if (!v || v === 'null' || v === '~') continue; // YAML null → absent, not the string "null"
     switch (k) {
       case 'name': meta.name = v; break;
+      case 'description': { const d = scalar(v); if (d) meta.description = d; break; }
       case 'cuisine': meta.cuisine = v; break;
       case 'protein': meta.protein = v; break;
       case 'cadence': meta.cadence = v; break;

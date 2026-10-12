@@ -7,6 +7,7 @@ import { marked } from 'marked';
 import { allowHit, CAPTURES_PER_MIN, CHECKS_PER_MIN, clientIp, configuredPasscode, requirePasscode, whoFor } from './auth.ts';
 import { broadcast } from './bus.ts';
 import { gitHead, lastPullResult, pullIfStale, readSdkVersion } from './git.ts';
+import { checkMove } from './move.ts';
 import { CHECK_KEY, parseRecipe, SAFE_FILE } from './parse.ts';
 import { plansDir, recipesDir } from './paths.ts';
 import { COOK_SERVINGS_MAX, COOK_SERVINGS_MIN, cookEntry, parseServings } from './cook.ts';
@@ -22,7 +23,7 @@ import {
   typicalMs, type Capture, type ExtraItem, type RunType, type SettingKey, type Settings,
   type WeekFeedback,
 } from './store.ts';
-import { DAYS, todayUTC, weekDays, weekIdForDate, type DayName } from './weeks.ts';
+import { DAYS, fmtISO, todayUTC, weekDays, weekIdForDate, type DayName } from './weeks.ts';
 
 const SERVER_STARTED_AT = Date.now();
 
@@ -90,7 +91,7 @@ async function settingsPayload() {
         waitingForCapture: eff.autoFold && pend.length > 0 && !lastCaptureAt,
       },
       run: { active: !!run, type: run?.type ?? null, startedAt: run?.startedAt ?? null },
-      typicalMs: Object.fromEntries((['propose', 'revise', 'lock', 'fold', 'shop-adjust', 'review', 'rescale', 'ideas', 'import'] as RunType[])
+      typicalMs: Object.fromEntries((['propose', 'revise', 'lock', 'fold', 'shop-adjust', 'review', 'rescale', 'move', 'ideas', 'import'] as RunType[])
         .map((k) => [k, typicalMs(k)])),
     },
   };
@@ -476,6 +477,27 @@ export function registerRoutes(app: express.Express) {
     if (!guardNoRun(res)) return; // re-check after the await
     void startChain([{ type: 'rescale', week, rescale: { day, servings } }]);
     res.json({ ok: true });
+  });
+
+  // One dinner of the week being cooked to another day (the Week tab's Move
+  // control): a light run swaps the two Plan-table rows, relabels the planning
+  // note and re-dates the dinner's prep (move.md). Eligibility is move.ts's
+  // checkMove, the same function /api/state's `moveTo` lists come from.
+  app.post('/api/runs/move', requirePasscode, async (req, res) => {
+    if (!guardNoRun(res)) return;
+    const week = String(req.body?.week ?? '');
+    const day = req.body?.day as DayName;
+    const to = req.body?.to as DayName;
+    if (!/^\d{4}-W\d{2}$/.test(week)) return res.status(400).json({ error: 'bad week' });
+    if (!DAYS.includes(day) || !DAYS.includes(to)) return res.status(400).json({ error: 'bad day' });
+    if (day === to) return res.status(400).json({ error: `That dinner is already on ${to}.` });
+    const plan = (await readAllPlans()).get(week);
+    if (!plan) return res.status(404).json({ error: `No plan file for ${week}.` });
+    const ok = checkMove({ plan, today: fmtISO(todayUTC()), captures }, day, to);
+    if (!ok.ok) return res.status(409).json({ error: ok.why });
+    if (!guardNoRun(res)) return; // re-check after the await
+    void startChain([{ type: 'move', week, move: { day, to } }]);
+    res.json({ ok: true, swap: !!ok.target.swapsWith });
   });
 
   app.post('/api/runs/review', requirePasscode, async (req, res) => {

@@ -54,7 +54,7 @@ async function expectOk(r, fallbackMsg) {
 let toastT = null;
 function toast(msg) {
   const el = $('toast');
-  el.textContent = msg;
+  el.textContent = humanizeWeekIds(msg); // server errors can name a week by id
   el.classList.add('on');
   clearTimeout(toastT);
   toastT = setTimeout(() => el.classList.remove('on'), 4200);
@@ -82,8 +82,27 @@ const fmtDay = (iso) => { const p = dpart(iso); return `${MONTHS[p.m - 1]} ${p.d
 /** "Oct 10–16" / "Sep 27–Oct 3": the header's tight form of fmtRange. */
 const tightRange = (dates) => fmtRange(dates).replace(' – ', '–');
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-/** "2026-W43" → "W43" (display only; ids sent to the server stay full). */
-const shortWeek = (id) => String(id ?? '').replace(/^\d{4}-/, '');
+/* Week names. Ids (2026-W43) are identifiers — files, APIs, feedback and check
+   keys — and never reach the screen. People name a week relative to today
+   when they can, by its dates otherwise; the server ships both for every id
+   the state references (state.weeks: { start, end, range, rel }).
+     weekName(id, 'rel')   → "next week" (no relative name: "the week of Oct 17")
+     weekName(id, 'Rel')   → "Next week" / "The week of Oct 17"
+     weekName(id, 'range') → "Oct 17–23"
+     weekName(id, 'of')    → "the week of Oct 17–23"
+   An id missing from state.weeks falls back to "W43", so nothing breaks. */
+function weekName(id, form = 'rel') {
+  const i = state?.weeks?.[id];
+  if (!i) return String(id ?? '').replace(/^\d{4}-/, '');
+  if (form === 'range') return i.range;
+  if (form === 'of') return `the week of ${i.range}`;
+  const s = i.rel ? `${i.rel} week` : `the week of ${fmtDay(i.start)}`;
+  return form === 'Rel' ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+/** Ids inside server text (errors, run summaries) → dates: "2026-W43 already has a plan file" →
+    "Oct 17–23 already has …". Paths (plans/2026-W43.md) and keys (2026-W43:shop:…) keep theirs. */
+const humanizeWeekIds = (text) => String(text ?? '')
+  .replace(/(^|[^\w/.-])(\d{4}-W\d{2})(?![\w-]|[.:]\w)/g, (_m, pre, id) => pre + weekName(id, 'range'));
 /** An icon from index.html's inline sprite. */
 const ico = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 /** "Dish with Sides" → ['Dish', 'with Sides']: serif title + italic second line (display only). */
@@ -160,6 +179,7 @@ function showTab(name, keepScroll) {
   }
   if (tab === 'recipes') void loadRecipes();
   if (tab === 'cook') { void loadRecipes(); renderCook(); }
+  if (typeof renderWindow === 'function') renderWindow(); // the kitchen window: Week tab only (05-window.js)
   renderHead();
   renderStrip();
   if (booted && !keepScroll) requestAnimationFrame(() => window.scrollTo(0, (viewState.scroll ?? {})[tab] ?? 0));
@@ -226,7 +246,7 @@ function connectWS() {
       if (m.ev && m.ev.kind === 'error') toast(m.ev.text);
       // A close-out's own confirmation; when it also folded entries, the
       // fold-state that follows replaces this with "In the record ✓✓ · …".
-      if (m.ev && m.ev.kind === 'done' && state.run?.type === 'review') toast(`${state.run.week || 'Week'} closed out ✓ · stats and the review are in the record`);
+      if (m.ev && m.ev.kind === 'done' && state.run?.type === 'review') toast(`${state.run.week ? weekName(state.run.week, 'Rel') : 'Week'} closed out ✓ · stats and the review are in the record`);
     } else if (m.type === 'fold-state') {
       setFoldState(m.fold); // a fold's outcome, with what it put in the record
       renderStrip();
@@ -282,7 +302,7 @@ function renderHead() {
       const lo = Math.min(...sv), hi = Math.max(...sv);
       const serv = !n ? '' : lo === hi ? ` · ${lo} servings each` : ` · ${lo}–${hi} servings`;
       return [
-        [today, shortWeek(state.cooking.week)].filter(Boolean).join(' · '),
+        today,
         ['Week of', tightRange(state.cooking.dates)],
         `${n} dinners${serv}${state.cooking.fallback ? ' · showing the last locked week' : ''}`,
       ];
@@ -305,10 +325,9 @@ function renderHead() {
       const w = state.aheadWeekId;
       const p = state.ahead?.plan;
       // Usually next week — but when the current week has no locked plan the
-      // server points `ahead` at the current week, so don't mislabel it.
-      const lbl = w === state.currentWeekId ? 'This week' : 'Next week';
-      const range = state.ahead?.dates ? tightRange(state.ahead.dates) : '';
-      const eb = [shortWeek(w), range].filter(Boolean).join(' · ');
+      // server points `ahead` at the current week, and weekName says so.
+      const lbl = weekName(w, 'Rel');
+      const eb = weekName(w, 'range');
       if (!p) return [eb, lbl, 'Not planned yet'];
       const n = p.meals.filter((m) => !m.flexible).length;
       if (p.status === 'planning') return [eb, lbl, `Proposal ready · ${n} dinners · approve, adjust, then lock`];
@@ -318,12 +337,12 @@ function renderHead() {
       // state.shop is the server's decision about which week's list is live.
       const w = state.shop?.week ?? state.aheadWeekId;
       const g = state.shop?.grocery;
-      const dates = w === state.cooking?.week ? state.cooking.dates : w === state.ahead?.week ? state.ahead?.dates : null;
-      const eb = dates ? `Week of ${tightRange(dates)}` : shortWeek(w);
-      if (!g) return [eb, ['Shopping for', shortWeek(w)], 'The list appears when the week locks'];
+      const eb = weekName(w, 'range');
+      const title = ['Shopping for', weekName(w, 'rel')]; // "this week" / "next week" / "the week of Oct 24"
+      if (!g) return [eb, title, 'The list appears when the week locks'];
       const total = g.stores.reduce((a, s) => a + s.sections.reduce((x, y) => x + y.items.length, 0), 0);
       const done = g.stores.reduce((a, s) => a + s.sections.reduce((x, y) => x + y.items.filter((i) => state.checks[i.key]).length, 0), 0);
-      return [eb, ['Shopping for', shortWeek(w)], `${done} of ${total} · ${g.stores.map((s) => s.name.split(' ')[0]).join(' + ')}`, total ? done / total : 0];
+      return [eb, title, `${done} of ${total} · ${g.stores.map((s) => s.name.split(' ')[0]).join(' + ')}`, total ? done / total : 0];
     },
   };
   const [eb, t, s, prog] = H[tab]();
@@ -507,17 +526,20 @@ function renderStrip() {
     pulse.hidden = false;
     const verb = { propose: 'Proposing', revise: 'Revising', lock: 'Locking + building the list for',
       fold: 'Recording your log', 'shop-adjust': 'Adjusting the list for', review: 'Closing out', ask: 'Asking Claude',
-      ideas: 'Finding new recipe ideas', import: 'Importing a recipe', rescale: 'Rescaling a meal in' }[run.type] || 'Working on';
+      ideas: 'Finding new recipe ideas', import: 'Importing a recipe', rescale: 'Rescaling a meal for', move: 'Moving a dinner in' }[run.type] || 'Working on';
     // week-less runs (fold, ask, ideas, import) have no week: no trailing space before the " · "
-    const head = [verb, run.week].filter(Boolean).join(' ');
-    const doing = runEventsLatest ? ` — ${runEventsLatest}` : '';
+    const head = [verb, run.week && weekName(run.week)].filter(Boolean).join(' ');
+    const doing = runEventsLatest ? ` — ${humanizeWeekIds(runEventsLatest)}` : '';
     const ch = run.chain;
     if (ch) {
-      // "Closing out 2026-W42 · step 1 of 2, then proposing 2026-W43 · 1:12 · usually ~5 min total"
+      // "Closing out this week · step 1 of 2, then proposing next week · 1:12 · usually ~5 min total"
       const thenVerb = { propose: 'proposing', revise: 'revising', lock: 'locking', fold: 'recording the log',
-        'shop-adjust': 'adjusting the list for', review: 'closing out', rescale: 'rescaling a meal in',
+        'shop-adjust': 'adjusting the list for', review: 'closing out', rescale: 'rescaling a meal for', move: 'moving a dinner in',
         ideas: 'finding new recipe ideas', import: 'importing a recipe' };
-      const later = ch.types.slice(ch.step).map((t, i) => `${thenVerb[t] || t} ${ch.weeks[ch.step + i] || ''}`.trim());
+      const later = ch.types.slice(ch.step).map((t, i) => {
+        const wk = ch.weeks[ch.step + i];
+        return `${thenVerb[t] || t} ${wk ? weekName(wk) : ''}`.trim();
+      });
       const el = mmss(Date.now() - ch.startedAt);
       const typ = ch.typicalMs ? ` · usually ~${mins(ch.typicalMs)} min total` : '';
       text.innerHTML = `<b>${esc(head)}</b>${esc(` · step ${ch.step} of ${ch.of}${later.length ? `, then ${later.join(', then ')}` : ''}`)} · ${el}${esc(typ)}${esc(doing)}`;
@@ -549,8 +571,8 @@ function renderStrip() {
   if (state.cooking && syncCloseReady()) { // live: captures don't refetch /api/state
     strip.className = 'strip';
     const andPlan = !state.ahead?.plan;
-    text.innerHTML = `<b>${esc(state.cooking.week)} is fully logged</b> — ${andPlan
-      ? `close it out and plan ${esc(state.aheadWeekId)} in one go` : 'close it out when you\'re ready'}`;
+    text.innerHTML = `<b>${esc(weekName(state.cooking.week, 'Rel'))} is fully logged</b> — ${andPlan
+      ? `close it out and plan ${esc(weekName(state.aheadWeekId))} in one go` : 'close it out when you\'re ready'}`;
     // navigates to the Week tab's close-out card (planning inputs live there); never fires a run
     btn.hidden = false;
     btn.textContent = 'Close out';
@@ -566,8 +588,8 @@ function renderStrip() {
     const isPlanningTime = !friday || state.today >= friday;
     strip.className = isPlanningTime ? 'strip' : 'strip quiet';
     text.innerHTML = isPlanningTime
-      ? `<b>${esc(state.aheadWeekId)} isn't planned yet</b> — ${tab === 'next' ? 'hit Propose below' : 'start it on the Next tab'}`
-      : `${esc(state.aheadWeekId)} gets planned Friday`;
+      ? `<b>${esc(weekName(state.aheadWeekId, 'Rel'))} isn't planned yet</b> — ${tab === 'next' ? 'hit Propose below' : 'start it on the Next tab'}`
+      : `${esc(weekName(state.aheadWeekId, 'Rel'))} gets planned Friday`;
     return;
   }
   if (state.ahead.plan.status === 'planning') {
@@ -576,15 +598,16 @@ function renderStrip() {
     const undecided = appr.filter((a) => !a.approved && !a.decision).length;
     const changes = appr.some((a) => a.decision === 'reject' || a.decision === 'swap') || !!state.feedback?.weekNote;
     strip.className = 'strip';
+    const W = esc(weekName(state.ahead.week, 'Rel'));
     text.innerHTML = undecided
-      ? `<b>${esc(state.ahead.week)} proposal is waiting</b> — ${undecided} meal${undecided === 1 ? '' : 's'} to decide`
+      ? `<b>${W}’s proposal is waiting</b> — ${undecided} meal${undecided === 1 ? '' : 's'} to decide`
       : changes
-        ? `<b>${esc(state.ahead.week)} changes marked</b> — send them, or send and lock`
-        : `<b>${esc(state.ahead.week)} fully approved</b> — lock it to build the grocery list`;
+        ? `<b>${W} has changes marked</b> — send them, or send and lock`
+        : `<b>${W} is fully approved</b> — lock it to build the grocery list`;
     return;
   }
   strip.className = 'strip quiet';
-  text.textContent = `${state.ahead.week} locked · shop from the Shop tab`;
+  text.textContent = `${weekName(state.ahead.week, 'Rel')} locked · shop from the Shop tab`;
 }
 
 function renderNavDots() {
@@ -604,30 +627,38 @@ function resultCard(forTypes) {
   if (!types.some((t) => forTypes.includes(t))) return '';
   if (localStorage.getItem('mealapp-result-dismissed') === String(lr.at)) return '';
   const LABEL = { propose: 'Proposal ready', revise: 'Plan revised', lock: 'Week locked',
-    fold: 'Log recorded', 'shop-adjust': 'List adjusted', review: 'Week closed out', rescale: 'Meal rescaled',
+    fold: 'Log recorded', 'shop-adjust': 'List adjusted', review: 'Week closed out', rescale: 'Meal rescaled', move: 'Dinner moved',
     ideas: 'Ideas ready', import: 'Recipe imported' };
-  const label = LABEL[lr.type] || 'Done';
+  // A single run's label names its week the way a person would:
+  // "Proposal ready for next week", "Next week locked", "This week closed out".
+  const named = (type, week) => {
+    if (!week) return LABEL[type] || 'Done';
+    const w = weekName(week), W = weekName(week, 'Rel');
+    return { propose: `Proposal ready for ${w}`, revise: `${W} revised`, lock: `${W} locked`,
+      review: `${W} closed out`, 'shop-adjust': `List adjusted for ${w}`, rescale: `Meal rescaled for ${w}` }[type]
+      || `${LABEL[type] || 'Done'} · ${w}`;
+  };
   if (lr.chain && lr.ok && lr.results?.length) {
-    // "Closed out 2026-W42 · proposed 2026-W43" / "Revised and locked 2026-W43"
+    // "Closed out last week · proposed this week" / "Revised and locked next week"
     const PAST = { propose: 'proposed', revise: 'revised', lock: 'locked', fold: 'recorded the log',
-      'shop-adjust': 'adjusted the list for', review: 'closed out', rescale: 'rescaled a meal in',
+      'shop-adjust': 'adjusted the list for', review: 'closed out', rescale: 'rescaled a meal in', move: 'moved a dinner in',
       ideas: 'found new recipe ideas', import: 'imported a recipe' };
     const rs = lr.results;
     let title = rs.every((r) => r.week === rs[0].week)
-      ? `${rs.map((r) => PAST[r.type] || r.type).join(' and ')} ${rs[0].week}`
-      : rs.map((r) => `${PAST[r.type] || r.type} ${r.week}`).join(' · ');
+      ? `${rs.map((r) => PAST[r.type] || r.type).join(' and ')} ${weekName(rs[0].week)}`
+      : rs.map((r) => `${PAST[r.type] || r.type} ${weekName(r.week)}`).join(' · ');
     title = title.charAt(0).toUpperCase() + title.slice(1);
     return `<div class="result" id="result-card">
       <button class="dismiss" aria-label="Dismiss" onclick="dismissResult(${lr.at})">✕</button>
       <div class="rlabel">${esc(title)}</div>
-      ${rs.map((r) => `<div class="rstep"><div class="rsteplabel">${esc(LABEL[r.type] || r.type)} · ${esc(r.week)}</div>
-        <div class="rbodytext">${r.summaryHtml}</div></div>`).join('')}
+      ${rs.map((r) => `<div class="rstep"><div class="rsteplabel">${esc([LABEL[r.type] || r.type, r.week && weekName(r.week, 'range')].filter(Boolean).join(' · '))}</div>
+        <div class="rbodytext">${humanizeWeekIds(r.summaryHtml)}</div></div>`).join('')}
     </div>`;
   }
   return `<div class="result ${lr.ok ? '' : 'err'}" id="result-card">
     <button class="dismiss" aria-label="Dismiss" onclick="dismissResult(${lr.at})">✕</button>
-    <div class="rlabel">${esc([lr.ok ? label : 'Run failed', lr.week].filter(Boolean).join(' · '))}</div>
-    <div class="rbodytext">${lr.summaryHtml}</div>
+    <div class="rlabel">${esc(lr.ok ? named(lr.type, lr.week) : ['Run failed', lr.week && weekName(lr.week)].filter(Boolean).join(' · '))}</div>
+    <div class="rbodytext">${humanizeWeekIds(lr.summaryHtml)}</div>
   </div>`;
 }
 window.dismissResult = (at) => { localStorage.setItem('mealapp-result-dismissed', String(at)); renderAll(); };

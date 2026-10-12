@@ -18,3 +18,4 @@ Then run the full close-out per `.claude/commands/review-week.md`:
 5. If some planned night is genuinely unlogged even after folding the captures above, log it as `skipped — unrecorded` rather than blocking, and flag it in your final message.
 
 Commit and push. Final message: the week in 4–6 sentences — adherence, the standout and the miss, what carries into next week's plan.
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

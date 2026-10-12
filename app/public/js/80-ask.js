@@ -199,11 +199,18 @@ function renderAsk() {
   paintAskGate();
 }
 
+// Mirrors busyLabel in server/runs.ts: "the propose run for next week",
+// "the revise → lock chain for next week", "the review → propose chain (this week → next week)".
 function askRunLabel(r) {
   if (r.type === 'ask') return 'another Ask Claude answer';
   const ch = r.chain;
-  if (ch) return `the ${ch.types.map((t, i) => `${t}${ch.weeks[i] ? ` ${ch.weeks[i]}` : ''}`).join(' → ')} chain`;
-  return `the ${r.type} run${r.week ? ` for ${r.week}` : ''}`;
+  if (ch) {
+    const ws = ch.weeks.filter(Boolean);
+    const words = ws.every((w) => w === ws[0]) ? (ws[0] ? ` for ${weekName(ws[0])}` : '')
+      : ` (${ws.map((w) => weekName(w)).join(' → ')})`;
+    return `the ${ch.types.join(' → ')} chain${words}`;
+  }
+  return `the ${r.type} run${r.week ? ` for ${weekName(r.week)}` : ''}`;
 }
 
 // Passcode form, busy line, Send/Stop state. Also runs every second while the

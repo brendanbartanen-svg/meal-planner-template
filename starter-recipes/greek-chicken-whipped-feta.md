@@ -1,5 +1,6 @@
 ---
 name: Sheet-Pan Greek Chicken with Whipped Feta
+description: "Lemon-oregano chicken thighs roasted with peppers, red onion, burst tomatoes and olives, piled over a platter of creamy whipped feta."
 cuisine: mediterranean
 protein: chicken-thigh
 method: [sheet-pan, oven]

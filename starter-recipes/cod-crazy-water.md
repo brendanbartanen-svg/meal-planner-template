@@ -1,5 +1,6 @@
 ---
 name: Cod in Crazy Water (Acqua Pazza)
+description: "Cod gently poached in a briny broth of burst cherry tomatoes, white wine, olives, capers and garlic, served with toasted bread for mopping."
 cuisine: italian
 protein: cod
 method: [stovetop]

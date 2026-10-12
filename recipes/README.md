@@ -7,6 +7,7 @@ One file per recipe, kebab-case filename (`sheet-pan-chicken-fajitas.md`). A rec
 ```markdown
 ---
 name: Sheet-Pan Chicken Fajitas
+description: "Chili-rubbed chicken thighs roasted with sweet peppers and onion on one pan, tucked into warm flour tortillas with a squeeze of lime."
 cuisine: mexican
 protein: chicken-thigh
 method: [sheet-pan, oven]
@@ -53,6 +54,21 @@ source: original      # or URL
 ## Notes
 <!-- Cook-to-cook learnings: "double the lime", "less onion next time", timing corrections -->
 ```
+
+## The description says what the dish is
+
+`description:` sits on the line right after `name:` and is what the Week tab shows on each day card,
+so it reads at a glance:
+
+- **One sentence, at most 160 characters**, saying what the dish *is* and how it eats: the main
+  component, the key flavors, the side.
+- **Always double-quoted** (`description: "…"`), since it usually contains commas and may contain a
+  colon. No double quotes inside it.
+- **The dish only**: no ratings, no planning, shopping or freezer logistics, no people or store
+  names, no times or nutrition, no em dashes. Why a dish was picked for a week belongs in that
+  plan's Planning notes, not here.
+- Every recipe has one (`npm run selftest` checks the library). Rewrite it when a recipe changes
+  enough that it no longer describes the plate.
 
 ## Prep comes first
 

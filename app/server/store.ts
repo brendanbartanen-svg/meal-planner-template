@@ -24,10 +24,20 @@ export const MODEL_OPTIONS = [
 export const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export const FOLD_QUIET_OPTIONS = [5, 10, 15, 30, 60] as const;
 export type Effort = (typeof EFFORT_OPTIONS)[number];
+export type TempUnit = 'F' | 'C';
+/** The kitchen window's place (weather.ts): one Open-Meteo geocoding result, as saved from the gear panel. */
+export interface WeatherLocation {
+  name: string;
+  admin1?: string;  // state / province
+  country?: string;
+  lat: number;
+  lon: number;
+  tz: string;       // IANA zone from the geocoder ('' when it gave none); the forecast itself asks timezone=auto
+}
 
 export interface Settings {
   planModel?: string;   // propose / revise / lock / review
-  lightModel?: string;  // fold / shop-adjust / rescale
+  lightModel?: string;  // fold / shop-adjust / rescale / move
   cookModel?: string;   // sous-chef chat
   planEffort?: Effort;
   lightEffort?: Effort;
@@ -36,8 +46,10 @@ export interface Settings {
   foldQuietMin?: number;
   pushPrepTime?: string;    // "HH:MM" local — the prep-today notice (notify.ts)
   pushTonightTime?: string; // "HH:MM" local — the tonight's-dinner notice
+  location?: WeatherLocation; // the kitchen window's weather (weather.ts); absent = no weather, device clock only
+  tempUnit?: TempUnit;        // the window caption's temperatures
 }
-export const SETTING_KEYS = ['planModel', 'lightModel', 'cookModel', 'planEffort', 'lightEffort', 'cookEffort', 'autoFold', 'foldQuietMin', 'pushPrepTime', 'pushTonightTime'] as const;
+export const SETTING_KEYS = ['planModel', 'lightModel', 'cookModel', 'planEffort', 'lightEffort', 'cookEffort', 'autoFold', 'foldQuietMin', 'pushPrepTime', 'pushTonightTime', 'location', 'tempUnit'] as const;
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -56,7 +68,29 @@ export function settingError(key: SettingKey, v: unknown): string | null {
       return (FOLD_QUIET_OPTIONS as readonly unknown[]).includes(v) ? null : `foldQuietMin must be one of ${FOLD_QUIET_OPTIONS.join(', ')}`;
     case 'pushPrepTime': case 'pushTonightTime':
       return typeof v === 'string' && HHMM_RE.test(v) ? null : `${key} must be a 24-hour "HH:MM" time`;
+    case 'location':
+      return locationError(v);
+    case 'tempUnit':
+      return v === 'F' || v === 'C' ? null : 'tempUnit must be "F" or "C"';
   }
+}
+
+const LOCATION_FIELDS = ['name', 'admin1', 'country', 'lat', 'lon', 'tz'];
+const LOCATION_TEXT_MAX = 80;
+/** A saved place: exactly the geocoder's fields, finite coordinates, short strings. */
+function locationError(v: unknown): string | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'location must be an object { name, admin1?, country?, lat, lon, tz }';
+  const o = v as Record<string, unknown>;
+  const extra = Object.keys(o).filter((k) => !LOCATION_FIELDS.includes(k));
+  if (extra.length) return `location has unknown field(s): ${extra.join(', ')}`;
+  if (typeof o.name !== 'string' || !o.name.trim() || o.name.length > LOCATION_TEXT_MAX) return `location.name must be text of 1–${LOCATION_TEXT_MAX} characters`;
+  for (const k of ['admin1', 'country'] as const) {
+    if (o[k] !== undefined && (typeof o[k] !== 'string' || (o[k] as string).length > LOCATION_TEXT_MAX)) return `location.${k} must be text of at most ${LOCATION_TEXT_MAX} characters`;
+  }
+  if (typeof o.tz !== 'string' || o.tz.length > LOCATION_TEXT_MAX) return `location.tz must be text of at most ${LOCATION_TEXT_MAX} characters`;
+  if (typeof o.lat !== 'number' || !Number.isFinite(o.lat) || o.lat < -90 || o.lat > 90) return 'location.lat must be a number from -90 to 90';
+  if (typeof o.lon !== 'number' || !Number.isFinite(o.lon) || o.lon < -180 || o.lon > 180) return 'location.lon must be a number from -180 to 180';
+  return null;
 }
 
 /** Env / built-in fallbacks — what each key resolves to when settings.json lacks it. */
@@ -74,6 +108,8 @@ export function settingDefaults() {
     foldQuietMin: 5, // was 15 until 2026-10 (UI round C): short enough that "into the record" feels prompt
     pushPrepTime: hhmmEnv('MEALAPP_PUSH_PREP_TIME', '08:00'),
     pushTonightTime: hhmmEnv('MEALAPP_PUSH_TONIGHT_TIME', '16:30'),
+    location: null as WeatherLocation | null, // no built-in place: the window runs on the device clock until one is set
+    tempUnit: (process.env.MEALAPP_TEMP_UNIT || '').trim().toUpperCase() === 'C' ? 'C' as TempUnit : 'F' as TempUnit,
   };
 }
 /** An "HH:MM" env var, or the built-in time when it is unset or malformed. */
@@ -95,6 +131,8 @@ export function effectiveSettings() {
     foldQuietMin: settings.foldQuietMin ?? d.foldQuietMin,
     pushPrepTime: settings.pushPrepTime ?? d.pushPrepTime,
     pushTonightTime: settings.pushTonightTime ?? d.pushTonightTime,
+    location: settings.location ?? d.location,
+    tempUnit: settings.tempUnit ?? d.tempUnit,
   };
 }
 
@@ -112,7 +150,7 @@ export function modelFor(kind: 'plan' | 'light' | 'cook'): Pick<Options, 'model'
 
 // The run kinds. Declared here rather than in runs.ts because runStats is
 // keyed by them; runs.ts and everything else import it from this module.
-export type RunType = 'propose' | 'revise' | 'lock' | 'fold' | 'shop-adjust' | 'review' | 'rescale' | 'ideas' | 'import' | 'ask';
+export type RunType = 'propose' | 'revise' | 'lock' | 'fold' | 'shop-adjust' | 'review' | 'rescale' | 'move' | 'ideas' | 'import' | 'ask';
 
 export interface Capture {
   date: string; // ISO date, keys the entry — deliberately not week-scoped

@@ -9,16 +9,22 @@ import path from 'node:path';
 import { marked } from 'marked';
 import { broadcast } from './bus.ts';
 import { ideasStateBlock, queuedIdeasBlock } from './ideas.ts';
+import { dayLong, donePrepLines, moveFills } from './move.ts';
 import { DEFAULT_SERVINGS, ingredientListLines, parseRecipe, SAFE_FILE, type PlanMeal } from './parse.ts';
-import { promptsDir, recipesDir, repoRoot } from './paths.ts';
+import { plansDir, promptsDir, recipesDir, repoRoot } from './paths.ts';
 import { readAllPlans } from './repo.ts';
 import { factorFor, formatQty, scaleIngredients } from './scale.ts';
 import {
-  autoFoldOn, captures, extras, feedback, foldDebounceMs, modelFor, pendingCaptures,
+  autoFoldOn, captures, checks, extras, feedback, foldDebounceMs, modelFor, pendingCaptures,
   recordDuration, saveCaptures, saveExtras, saveFeedback, typicalMs, type RunType,
 } from './store.ts';
 import { trendsForPrompt } from './trends-routes.ts';
-import { addWeeks, fmtISO, humanRange, todayUTC, weekDates, weekDays, weekIdForDate, type DayName } from './weeks.ts';
+import {
+  addWeeks, fmtISO, humanizeWeekIds, humanRange, todayUTC, weekDates, weekDays, weekIdForDate, weekInfo, weekPhrase, type DayName,
+} from './weeks.ts';
+
+/** How status lines and messages name a run's week, relative to today: "next week", "the week of Oct 24". */
+export const weekWordsNow = (week: string): string => (week ? weekPhrase(weekInfo(week, weekIdForDate(todayUTC()))) : '');
 
 // ---------- claude bridge ----------
 
@@ -37,6 +43,8 @@ export interface ChainStep {
   autoApprove?: boolean;
   /** rescale only: the meal (day) and its new servings — fills rescale.md's placeholders. */
   rescale?: { day: DayName; servings: number };
+  /** move only: the dinner's day and the day it moves to (a swap when that day holds a dinner) — fills move.md's placeholders. */
+  move?: { day: DayName; to: DayName };
   /** Checked right before this step starts; a string stops the chain there (the step never runs). */
   guard?: () => Promise<string | null>;
 }
@@ -142,6 +150,7 @@ function mockActivity(type: RunType, week: string): string[] {
     case 'shop-adjust': return [`Reading: plans/${week}.md`, `Editing: plans/${week}.md`, '$ git push'];
     case 'review': return [`Reading: plans/${week}.md`, 'Editing: recipes/ frontmatter', 'Editing: profile/preferences.md', '$ git push'];
     case 'rescale': return [`Reading: plans/${week}.md`, `Editing: plans/${week}.md`, '$ git push'];
+    case 'move': return [`Reading: plans/${week}.md`, `Editing: plans/${week}.md`, '$ git push'];
     case 'ask': return []; // never a chain step; ask.ts has its own mock
     case 'ideas': return ['Reading: profile/preferences.md', 'Scanning files', 'Reading: profile/ideas.md', 'Editing: profile/ideas.md'];
     case 'import': return ['Reading: recipes/red-lentil-soup.md', 'Writing: recipes/(new).md', 'Editing: profile/preferences.md'];
@@ -150,28 +159,35 @@ function mockActivity(type: RunType, week: string): string[] {
 
 // Read BEFORE the success bookkeeping clears feedback / stamps captures, so a
 // mock summary can echo what the run received (handy for checking the UI).
-function mockSummary(type: RunType, week: string, note: string, autoApprove: boolean, rescale?: ChainStep['rescale']): string {
+function mockSummary(
+  type: RunType, week: string, note: string, autoApprove: boolean,
+  rescale?: ChainStep['rescale'], move?: ChainStep['move'],
+): string {
   const head = '_Mock run (MEALAPP_MOCK_RUNS): nothing was written or committed._';
   const n = note.trim().replace(/\n+/g, ' · ');
+  const wk = weekWordsNow(week) || 'the week';
+  const Wk = wk.charAt(0).toUpperCase() + wk.slice(1);
   switch (type) {
     case 'propose':
-      return `${head}\n\n- Proposed ${week}: three cook nights, one new dish and two proven favorites.\n- Constraints received: ${n || 'none'}`;
+      return `${head}\n\n- Proposed ${wk}: three cook nights, one new dish and two proven favorites.\n- Constraints received: ${n || 'none'}`;
     case 'revise': {
       const fb = feedback[week];
       const decs = fb ? Object.entries(fb.meals).map(([d, m]) => `${d} ${m?.decision ?? '?'}`).join(', ') : '';
-      return `${head}\n\n- Revised ${week}: ${decs || 'no per-meal decisions'}${fb?.weekNote ? '; week note applied' : ''}.\n`
+      return `${head}\n\n- Revised ${wk}: ${decs || 'no per-meal decisions'}${fb?.weekNote ? '; week note applied' : ''}.\n`
         + `- Replacements come back ${autoApprove ? '**approved** (send-and-lock)' : 'proposed'}.${n ? `\n- Note: ${n}` : ''}`;
     }
     case 'lock':
-      return `${head}\n\n- Locked ${week} and built its grocery list (13 items across two stores). First prep task due on day 1.`;
+      return `${head}\n\n- Locked ${wk} and built its grocery list (13 items across two stores). First prep task due on day 1.`;
     case 'fold':
       return `${head}\n\n- Would fold ${pendingCaptures().length} pending capture(s) into the Log tables.`;
     case 'shop-adjust':
-      return `${head}\n\n- Would adjust the ${week} list: ${n || '(no note)'}`;
+      return `${head}\n\n- Would adjust the list for ${wk}: ${n || '(no note)'}`;
     case 'review':
-      return `${head}\n\n- Closed out ${week}: recipe stats, the week review and learned preferences would be written.`;
+      return `${head}\n\n- ${Wk} closed out: recipe stats, the week review and learned preferences would be written.`;
     case 'rescale':
-      return `${head}\n\n- Would rescale ${rescale ? `${rescale.day} to ${rescale.servings} servings` : '(no meal given)'} in ${week}: its Servings cell, grocery lines and bulk notes.`;
+      return `${head}\n\n- Would rescale ${rescale ? `${rescale.day} to ${rescale.servings} servings` : '(no meal given)'} for ${wk}: its Servings cell, grocery lines and bulk notes.`;
+    case 'move':
+      return `${head}\n\n- Would move ${move ? `${dayLong(move.day)}'s dinner to ${dayLong(move.to)}` : '(no dinner given)'}: the two Plan-table rows, its planning note and its prep tasks.`;
     case 'ask': return head; // never a chain step; ask.ts has its own mock
     case 'ideas': return `${head}\n\n- Would add a batch of 8 new dishes to the top of profile/ideas.md.`;
     case 'import': { // `note` carries the {{IMPORT_SOURCE}} block; its "Title:" line names the dish
@@ -350,9 +366,18 @@ async function scaledIngredientsBlock(week: string, only?: { day: DayName; servi
 
 export async function buildPrompt(
   type: RunType, week: string, note: string,
-  opts: { autoApprove?: boolean; rescale?: ChainStep['rescale'] } = {},
+  opts: { autoApprove?: boolean; rescale?: ChainStep['rescale']; move?: ChainStep['move'] } = {},
 ): Promise<string> {
-  const template = await fs.readFile(path.join(promptsDir, `${type}.md`), 'utf8');
+  let template = await fs.readFile(path.join(promptsDir, `${type}.md`), 'utf8');
+  // move: the two days, the dish, plain move or swap, and the prep lines ticked
+  // in checks.json (move.md keeps those byte-identical so they stay ticked)
+  if (opts.move) {
+    const plan = (await readAllPlans()).get(week);
+    let raw = '';
+    try { raw = await fs.readFile(path.join(plansDir, `${week}.md`), 'utf8'); } catch { /* no file: the fills say so */ }
+    const fills = moveFills(plan, opts.move, plan ? donePrepLines(raw, plan, checks) : []);
+    for (const [k, v] of Object.entries(fills)) template = template.replaceAll(`{{${k}}}`, v);
+  }
   // rescale: the one meal, at the new servings (and at the old, which the list was built from)
   let rescaleMeal: PlanMeal | undefined;
   if (opts.rescale) rescaleMeal = (await readAllPlans()).get(week)?.meals.find((m) => m.day === opts.rescale!.day && !m.flexible);
@@ -454,7 +479,7 @@ async function executeStep(step: ChainStep, abort: AbortController, pushEvent: (
   let durationMs = 0;
 
   try {
-    const prompt = await buildPrompt(type, week, note, { autoApprove, rescale: step.rescale });
+    const prompt = await buildPrompt(type, week, note, { autoApprove, rescale: step.rescale, move: step.move });
     if (MOCK_RUNS) {
       console.log(`[mealapp] mock ${type} run${week ? ` for ${week}` : ''} — prompt:\n${prompt}\n[mealapp] (end of mock prompt)`);
       const acts = mockActivity(type, week);
@@ -463,7 +488,7 @@ async function executeStep(step: ChainStep, abort: AbortController, pushEvent: (
         await abortableSleep(MOCK_MS / acts.length, abort.signal);
       }
       if (MOCK_FAIL.has(type)) { isError = true; summaryMd = `Mock ${type} failure (MEALAPP_MOCK_FAIL).`; }
-      else summaryMd = mockSummary(type, week, note, autoApprove, step.rescale);
+      else summaryMd = mockSummary(type, week, note, autoApprove, step.rescale, step.move);
     } else {
       const options: Options = {
         cwd: repoRoot,
@@ -473,9 +498,9 @@ async function executeStep(step: ChainStep, abort: AbortController, pushEvent: (
         canUseTool: canUseTool(),
         settingSources: ['project'],
         systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM_APPEND },
-        maxTurns: type === 'fold' ? 50 : type === 'shop-adjust' || type === 'rescale' ? 40 : 120,
+        maxTurns: type === 'fold' ? 50 : type === 'shop-adjust' || type === 'rescale' || type === 'move' ? 40 : 120,
         // resolved once, here: settings changes mid-run apply to the next run
-        ...modelFor(type === 'fold' || type === 'shop-adjust' || type === 'rescale' ? 'light' : 'plan'),
+        ...modelFor(type === 'fold' || type === 'shop-adjust' || type === 'rescale' || type === 'move' ? 'light' : 'plan'),
       };
       const q = query({ prompt, options });
       for await (const msg of q) {
@@ -532,13 +557,14 @@ async function executeStep(step: ChainStep, abort: AbortController, pushEvent: (
   return { ok: !isError, summaryMd, summaryHtml, durationMs };
 }
 
-// "close out 2026-W42", "propose 2026-W43" — how chain messages name a step.
+// "close out this week", "propose next week" — how chain messages name a step.
 const STEP_VERB: Record<RunType, string> = {
   propose: 'propose', revise: 'revise', lock: 'lock', fold: 'fold the log',
   'shop-adjust': 'adjust the list for', review: 'close out', ask: 'answer an Ask Claude question',
-  ideas: 'suggest new recipe ideas', import: 'import a recipe', rescale: 'rescale a meal in',
+  ideas: 'suggest new recipe ideas', import: 'import a recipe', rescale: 'rescale a meal for',
+  move: 'move a dinner in',
 };
-const stepLabel = (s: ChainStep) => `${STEP_VERB[s.type]}${s.week ? ` ${s.week}` : ''}`;
+const stepLabel = (s: { type: RunType; week: string }) => `${STEP_VERB[s.type]}${s.week ? ` ${weekWordsNow(s.week)}` : ''}`;
 
 /** A single run — a one-step chain, so it shares every code path below. */
 export async function startRun(type: RunType, week: string, note = '') {
@@ -586,6 +612,7 @@ export async function startChain(steps: ChainStep[]): Promise<void> {
     let why: string | null = abort.signal.aborted ? 'stopped by user' : null;
     if (!why && step.guard) {
       try { why = await step.guard(); } catch (err) { why = `precheck failed: ${String(err)}`; }
+      if (why) why = humanizeWeekIds(why); // the reason reaches the result card, a toast and the push body
       if (why && MOCK_RUNS) {
         pushEvent({ kind: 'activity', text: `mock · precheck would stop here (${why}); continuing, mock steps write no files` });
         why = null;
@@ -598,7 +625,7 @@ export async function startChain(steps: ChainStep[]): Promise<void> {
     }
 
     const tag = cur.chain ? `Step ${i + 1} of ${n}: ` : '';
-    pushEvent({ kind: 'status', text: `${tag}${step.type} run started${step.week ? ` for ${step.week}` : ''}` });
+    pushEvent({ kind: 'status', text: `${tag}${step.type} run started${step.week ? ` for ${weekWordsNow(step.week)}` : ''}` });
     const out = await executeStep(step, abort, pushEvent);
     emitRunDone({ type: step.type, week: step.week, ok: out.ok, summaryMd: out.summaryMd, ...(chainInfo ? { chain: chainInfo } : {}) });
     if (!out.ok) { failure = { index: i, outcome: out }; break; }
@@ -627,7 +654,7 @@ export async function startChain(steps: ChainStep[]): Promise<void> {
     pushEvent({ kind: 'error', text: msg });
     let html = String(marked.parse(`**${msg}.**`)) + (failure.outcome?.summaryHtml ?? '');
     for (const r of done) {
-      html += String(marked.parse(`**Finished before that: ${STEP_VERB[r.type]}${r.week ? ` ${r.week}` : ''}.**`)) + r.summaryHtml;
+      html += String(marked.parse(`**Finished before that: ${stepLabel(r)}.**`)) + r.summaryHtml;
     }
     lastResult = { type: step.type, week: step.week, ok: false, summaryHtml: html, at, chain: true, results: done };
   }
@@ -652,12 +679,21 @@ export class RunBusyError extends Error {
   }
 }
 
-/** What the active run is doing, for "Claude is busy with …" messages. */
+/**
+ * What the active run is doing, for "Claude is busy with …" messages: "the
+ * propose run for next week", "the revise → lock chain for next week", "the
+ * review → propose chain (this week → next week)". Mirrored by 80-ask.js.
+ */
 export function busyLabel(r: Run): string {
   if (r.type === 'ask') return 'another Ask Claude answer';
   const ch = r.chain;
-  if (ch) return `the ${ch.types.map((t, i) => `${t}${ch.weeks[i] ? ` ${ch.weeks[i]}` : ''}`).join(' → ')} chain`;
-  return `the ${r.type} run${r.week ? ` for ${r.week}` : ''}`;
+  if (ch) {
+    const ws = ch.weeks.filter(Boolean);
+    const words = ws.every((w) => w === ws[0]) ? (ws[0] ? ` for ${weekWordsNow(ws[0])}` : '')
+      : ` (${ws.map(weekWordsNow).join(' → ')})`;
+    return `the ${ch.types.join(' → ')} chain${words}`;
+  }
+  return `the ${r.type} run${r.week ? ` for ${weekWordsNow(r.week)}` : ''}`;
 }
 
 /**

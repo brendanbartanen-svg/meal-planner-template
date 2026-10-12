@@ -129,6 +129,68 @@ export function humanRange(weekId: string): string {
   return `${DOW_NAME[a.getUTCDay()]} ${f(a)} – ${DOW_NAME[b.getUTCDay()]} ${f(b)}, ${weekId.slice(0, 4)}`;
 }
 
+// ---------- how people name a week ----------
+// Week ids (`2026-W43`) are identifiers: files, APIs, feedback and check keys.
+// Nothing a person reads carries one. People name a week relative to today
+// when they can ("this week", "next week", "last week") and by its dates
+// otherwise ("the week of Oct 17", "Oct 17–23"). /api/state ships a WeekInfo
+// for every id its payload references (the client never computes weeks), and
+// server-side copy (push titles, run status lines) goes through weekPhrase.
+
+export type WeekRel = 'last' | 'this' | 'next';
+export interface WeekInfo {
+  start: string;          // first day, ISO
+  end: string;            // last day, ISO (inclusive)
+  range: string;          // "Oct 17–23" / "Sep 27–Oct 3": en dash, no spaces, month repeated only when it changes
+  rel: WeekRel | null;    // relative to today's week; null when neither adjacent nor current
+}
+
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const monDay = (d: Date) => `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`;
+/** "Oct 17": an ISO date as a person reads it. */
+export const shortDate = (iso: string) => monDay(new Date(`${iso}T00:00:00Z`));
+
+/** Two ISO dates as one tight span: "Oct 17–23", "Sep 27–Oct 3" (en dash, month repeated only when it changes). */
+export function dateSpan(startISO: string, endISO: string): string {
+  const a = new Date(`${startISO}T00:00:00Z`);
+  const b = new Date(`${endISO}T00:00:00Z`);
+  return `${monDay(a)}–${a.getUTCMonth() === b.getUTCMonth() ? b.getUTCDate() : monDay(b)}`;
+}
+
+/** The client's tight header range: "Oct 17–23", "Sep 27–Oct 3". */
+export const tightRange = (weekId: string): string => dateSpan(fmtISO(startOfWeek(weekId)), fmtISO(endOfWeek(weekId)));
+
+/** Everything a person-facing label needs about `weekId`, relative to `todayWeekId`. */
+export function weekInfo(weekId: string, todayWeekId: string): WeekInfo {
+  const rel: WeekRel | null = weekId === todayWeekId ? 'this'
+    : weekId === addWeeks(todayWeekId, 1) ? 'next'
+    : weekId === addWeeks(todayWeekId, -1) ? 'last'
+    : null;
+  return { start: fmtISO(startOfWeek(weekId)), end: fmtISO(endOfWeek(weekId)), range: tightRange(weekId), rel };
+}
+
+/** "this week" / "next week" / "last week" / "the week of Oct 17" (capitalised with { cap: true }). */
+export function weekPhrase(info: WeekInfo, opts: { cap?: boolean } = {}): string {
+  const s = info.rel ? `${info.rel} week` : `the week of ${shortDate(info.start)}`;
+  return opts.cap ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// A full week id standing alone in prose — not part of a path (`plans/2026-W43.md`),
+// a key (`2026-W43:shop:…`) or a longer token.
+const WEEK_ID_IN_TEXT = /(^|[^\w/.-])(\d{4}-W\d{2})(?![\w-]|[.:]\w)/g;
+
+/**
+ * Week ids inside server-composed text (a precheck's reason, a run summary's
+ * first line) → their dates: "2026-W43 got a plan file" → "Oct 17–23 got a
+ * plan file". The dates read correctly anywhere in a sentence, which the
+ * relative words would not (they'd need capitalising at a sentence start).
+ */
+export function humanizeWeekIds(text: string): string {
+  return String(text ?? '').replace(WEEK_ID_IN_TEXT, (_m, pre: string, id: string) => {
+    try { return `${pre}${tightRange(id)}`; } catch { return `${pre}${id}`; }
+  });
+}
+
 // Prep labels look like "Sun 26, night" / "Thu 30, morning" / "Mon, night".
 // Resolve day-of-month within [start of week − 7, end of week] (thaws are
 // often due before the week starts); a bare weekday resolves inside the week.

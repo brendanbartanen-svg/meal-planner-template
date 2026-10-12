@@ -1,5 +1,6 @@
 ---
 name: Paneer Tikka Masala with Basmati
+description: "Broiler-charred, yogurt-marinated paneer cubes simmered in a creamy, cardamom-scented tomato gravy, served over basmati with cilantro and lemon."
 cuisine: indian
 protein: paneer
 method: [stovetop, broiler]

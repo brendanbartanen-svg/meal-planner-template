@@ -1,5 +1,6 @@
 ---
 name: Chicken Piccata with Roasted Broccoli
+description: "Flour-dredged chicken thighs seared golden and napped in a sharp lemon, caper and white wine butter sauce, with charred roasted broccoli."
 cuisine: italian
 protein: chicken-thighs
 method: [stovetop, skillet, roast]

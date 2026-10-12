@@ -1,5 +1,6 @@
 ---
 name: Coconut-Dill Salmon with Green Beans, Corn & Tomatoes
+description: "Salmon baked in a foil packet with a sweet-tart coconut-dill dressing, served with a salad of green beans, raw corn and tomatoes."
 cuisine: american
 protein: salmon
 method: [oven, kamado]

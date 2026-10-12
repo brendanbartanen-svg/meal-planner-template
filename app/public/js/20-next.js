@@ -51,12 +51,12 @@ function planInputsHtml(week) {
   const order = aheadDayOrder();
   return `<div class="planinputs" data-plan-week="${esc(week)}">
     <div class="chipslabel">Cook nights</div>
-    <div class="chips" role="group" aria-label="Cook nights for ${esc(week)}">${order.map((day) => {
+    <div class="chips" role="group" aria-label="Cook nights for ${esc(weekName(week))}">${order.map((day) => {
       const on = d.nights.includes(day);
       return `<button type="button" class="chip${on ? ' on' : ''}" data-night="${esc(day)}" aria-pressed="${on}">${esc(day)}</button>`;
     }).join('')}</div>
     <div class="chipsum">${esc(nightsSummary(d.nights, order))}</div>
-    <textarea class="plain" data-plannote aria-label="Constraints for ${esc(week)}" placeholder="${esc(PLAN_NOTE_PLACEHOLDER)}">${esc(d.note)}</textarea>
+    <textarea class="plain" data-plannote aria-label="Constraints for ${esc(weekName(week))}" placeholder="${esc(PLAN_NOTE_PLACEHOLDER)}">${esc(d.note)}</textarea>
   </div>`;
 }
 // Patch every copy of the draft in place (Week and Next can both show it) —
@@ -218,14 +218,14 @@ function renderNext() {
   if (!p) {
     // The cooking week is fully logged: point at the one-tap close-and-plan card.
     const closeHint = state.cooking?.closeReady
-      ? `<p class="hint">${esc(state.cooking.week)} is fully logged. <a href="#" id="goto-closeplan">Close it out and plan ${esc(w)} in one go</a> from the Week tab.</p>`
+      ? `<p class="hint">${esc(weekName(state.cooking.week, 'Rel'))} is fully logged. <a href="#" id="goto-closeplan">Close it out and plan ${esc(weekName(w))} in one go</a> from the Week tab.</p>`
       : '';
     html += `<div class="pending"><span class="when">planning</span>
-      <h2>Plan ${esc(shortWeek(w))}</h2>
+      <h2>Plan ${esc(weekName(w))}</h2>
       <p>Claude reads your preferences, the pantry, and the last weeks' ratings, then proposes the week for you to approve meal by meal.</p>
       ${closeHint}
       ${planInputsHtml(w)}
-      <button class="primary" id="btn-propose" ${runActive() ? 'disabled' : ''}>Propose ${esc(shortWeek(w))}${ico('arrow')}</button>
+      <button class="primary" id="btn-propose" ${runActive() ? 'disabled' : ''}>Propose ${esc(weekName(w))}${ico('arrow')}</button>
     </div>`;
     v.innerHTML = html;
     wirePlanInputs(v);
@@ -295,7 +295,7 @@ function renderNext() {
     }
     if (notApproved.length === 0 && !actionable) {
       html += `<div class="approvebar">
-        <button class="primary" id="btn-lock" ${runActive() ? 'disabled' : ''}>${ico('lock')}Lock ${esc(shortWeek(w))} + build the grocery list</button></div>`;
+        <button class="primary" id="btn-lock" ${runActive() ? 'disabled' : ''}>${ico('lock')}Lock ${esc(weekName(w))} + build the grocery list</button></div>`;
     } else if (hasFeedback) {
       // Two explicit buttons, no hidden mode. Send and lock = revise → lock in
       // one chain (replacements auto-approved); it needs a decision on every
@@ -315,7 +315,7 @@ function renderNext() {
   } else {
     // locked (or complete) — summary + change requests
     const nights = p.meals.filter((m) => !m.flexible);
-    html += `<div class="card"><h2>${esc(shortWeek(w))} is locked</h2>
+    html += `<div class="card"><h2>${esc(weekName(w, 'Rel'))} is locked</h2>
       <ul class="locked">` +
       nights.map((m) => `<li class="lockedrow">
         <span class="lockedday">${m.day}</span>

@@ -18,7 +18,7 @@
 // otherwise the plan row's ~cal / ~protein estimate. Each nutrient is
 // averaged over the dinners where it is known.
 import type { ParsedPlan, PlanMeal, RecipeMeta } from './parse.ts';
-import { endOfWeek, fmtISO, startOfWeek } from './weeks.ts';
+import { dateSpan, endOfWeek, fmtISO, shortDate, startOfWeek } from './weeks.ts';
 
 export const NUTRIENTS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g'] as const;
 export type Nutrient = (typeof NUTRIENTS)[number];
@@ -196,7 +196,6 @@ function weekTrend(plan: ParsedPlan, byFile: Map<string, RecipeMeta>, inProgress
 
 // ---------- summary line ----------
 
-const shortWeek = (w: string) => `W${w.slice(-2)}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const fmtCount = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
@@ -207,6 +206,8 @@ function summaryLine(rows: Array<{ trend: WeekTrend; meals: CookedMeal[] }>, spa
   const k = pool.length;
   const first = pool[0]!.trend.week;
   const last = pool[k - 1]!.trend.week;
+  // named by dates, never ids: the line is shown on the Trends card
+  const range = dateSpan(pool[0]!.trend.start, pool[k - 1]!.trend.end);
   const meals = pool.flatMap((r) => r.meals);
   const cal = meals.map((m) => m.nutrition.calories).filter((v): v is number => typeof v === 'number');
   const pro = meals.map((m) => m.nutrition.protein_g).filter((v): v is number => typeof v === 'number');
@@ -215,7 +216,6 @@ function summaryLine(rows: Array<{ trend: WeekTrend; meals: CookedMeal[] }>, spa
   const plant = meals.filter((m) => m.lane === 'plant').length;
   const cookedAvg = mean(pool.map((r) => r.trend.cooked));
   const plannedAvg = mean(pool.map((r) => r.trend.planned));
-  const range = k === 1 ? shortWeek(first) : `${shortWeek(first)}–${shortWeek(last)}`;
   const parts = [
     `${cookedAvg.toFixed(1)} of ${fmtCount(round(plannedAvg, 1))} nights cooked`,
     cal.length
@@ -228,8 +228,8 @@ function summaryLine(rows: Array<{ trend: WeekTrend; meals: CookedMeal[] }>, spa
   // Weeks inside the span that were left out for having no log at all.
   const gaps = eligible
     .filter((r) => r.trend.week >= first && r.trend.week <= last && r.trend.cooked + r.trend.skipped === 0)
-    .map((r) => shortWeek(r.trend.week));
-  const tail = gaps.length ? ` (${gaps.join(', ')} not logged, left out)` : '';
+    .map((r) => shortDate(r.trend.start));
+  const tail = gaps.length ? ` (week${gaps.length === 1 ? '' : 's'} of ${gaps.join(', ')} not logged, left out)` : '';
   return {
     text: `Last ${k === 1 ? 'week' : `${k} weeks`} (${range}): ${parts.join(', ')}${tail}`,
     weeks: pool.map((r) => r.trend.week),

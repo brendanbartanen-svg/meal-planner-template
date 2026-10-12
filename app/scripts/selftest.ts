@@ -82,6 +82,31 @@ check('prep "Fri 14, night" in W33 → Aug 14', prepDueDate('Fri 14, night', '20
 check('prep "Fri 7" in W33 → Aug 7 (before the week)', prepDueDate('Fri 7', '2026-W33') === '2026-08-07', prepDueDate('Fri 7', '2026-W33'));
 check('prep bare "Sat, night" in W33 → Aug 8', prepDueDate('Sat, night', '2026-W33') === '2026-08-08', prepDueDate('Sat, night', '2026-W33'));
 
+// ---- human week names (ids stay identifiers; people read relative words or dates) ----
+console.log('\nhuman week names:');
+{
+  const { weekInfo, weekPhrase, humanizeWeekIds } = await import('../server/weeks.ts');
+  const j = (x: unknown) => JSON.stringify(x);
+  const w43 = weekInfo('2026-W43', '2026-W42');
+  check('weekInfo W43 from W42 = Oct 17–23, next', j(w43) === j({ start: '2026-10-17', end: '2026-10-23', range: 'Oct 17–23', rel: 'next' }), w43);
+  check('weekInfo W42 from W42 is this week', weekInfo('2026-W42', '2026-W42').rel === 'this');
+  check('weekInfo W41 from W42 is last week', weekInfo('2026-W41', '2026-W42').rel === 'last');
+  check('weekInfo W44 from W42 has no relative name', weekInfo('2026-W44', '2026-W42').rel === null);
+  check('range across a month: W40 = "Sep 26–Oct 2"', weekInfo('2026-W40', '2026-W42').range === 'Sep 26–Oct 2', weekInfo('2026-W40', '2026-W42').range);
+  check('range of truncated W32 = "Aug 3–7"', weekInfo('2026-W32', '2026-W42').range === 'Aug 3–7', weekInfo('2026-W32', '2026-W42').range);
+  check('range of Mon-start W31 = "Jul 27–Aug 2"', weekInfo('2026-W31', '2026-W42').range === 'Jul 27–Aug 2', weekInfo('2026-W31', '2026-W42').range);
+  check('rel across the year: 2026-W53 → 2027-W01 is next', weekInfo('2027-W01', '2026-W53').rel === 'next');
+  check('weekPhrase: "next week" / "Next week"', weekPhrase(w43) === 'next week' && weekPhrase(w43, { cap: true }) === 'Next week');
+  const w44 = weekInfo('2026-W44', '2026-W42');
+  check('weekPhrase with no relative name: "the week of Oct 24" / "The week of Oct 24"',
+    weekPhrase(w44) === 'the week of Oct 24' && weekPhrase(w44, { cap: true }) === 'The week of Oct 24', [weekPhrase(w44), weekPhrase(w44, { cap: true })]);
+  const h = humanizeWeekIds('Not started: 2026-W43 got a plan file while 2026-W42 was closing.');
+  check('humanizeWeekIds: ids in prose become dates', h === 'Not started: Oct 17–23 got a plan file while Oct 10–16 was closing.', h);
+  const h2 = humanizeWeekIds('Revised 2026-W43: see plans/2026-W43.md, key 2026-W43:shop:x, file 2026-W43.md');
+  check('humanizeWeekIds: paths, keys and file names keep their ids',
+    h2 === 'Revised Oct 17–23: see plans/2026-W43.md, key 2026-W43:shop:x, file 2026-W43.md', h2);
+}
+
 // ---- W31 (locked, full grocery, empty log) ----
 const w31 = parsePlan(await fs.readFile(planSrc('2026-W31'), 'utf8'), '2026-W31.md');
 console.log(`\n${srcLabel('2026-W31')}:`);
@@ -192,6 +217,71 @@ check('skeleton hasGrocery false', skeleton.hasGrocery === false);
   check('prep_ahead unquoted', r.meta.prep_ahead[0]?.startsWith('thaw') === true, r.meta.prep_ahead[0]);
   check('body has Ingredients', r.body.includes('## Ingredients'));
   if (REAL) check('body has Prep (prep-first format)', /^## Prep\s*$/m.test(r.body));
+}
+
+// ---- recipe `description` (frontmatter, right after name:) ----
+// What the Week tab's day cards show. Parser cases are synthetic; the library
+// sweep reads the live recipes/ (every file must carry one in this household's
+// repo; elsewhere only the ones present are held to the format).
+console.log('\nrecipe description:');
+{
+  const fm = (line: string) => parseRecipe(`---\nname: Test Dish\n${line}\ncuisine: test\nservings: 4\n---\n\n## Ingredients\n- 1 lb x [P]\n`, 'test-dish.md').meta;
+  const plain = fm('description: "Seared chicken thighs in a sweet-hot glaze, with smashed cucumbers and rice."');
+  check('double-quoted: quotes stripped, commas kept', plain.description === 'Seared chicken thighs in a sweet-hot glaze, with smashed cucumbers and rice.', plain.description);
+  check('the keys after it still parse', plain.name === 'Test Dish' && plain.cuisine === 'test' && plain.servings === 4, plain);
+  const colon = fm('description: "Two ways to eat it: over rice, or stuffed into warm pita."');
+  check('colon inside the quotes is text', colon.description === 'Two ways to eat it: over rice, or stuffed into warm pita.', colon.description);
+  const esc = fm('description: "A \\"dry\\" curry: no gravy, all crust."');
+  check('escaped quotes unescaped', esc.description === 'A "dry" curry: no gravy, all crust.', esc.description);
+  const single = fm("description: 'The cook''s braise: beef, paprika, potatoes.'");
+  check("single-quoted: '' unescaped, colon kept", single.description === "The cook's braise: beef, paprika, potatoes.", single.description);
+  check('unquoted value passes through', fm('description: Beans in tomato sauce with feta.').description === 'Beans in tomato sauce with feta.');
+  check('empty / null / absent → no description',
+    fm('description: ""').description === undefined && fm('description: null').description === undefined
+      && fm('description:').description === undefined && fm('protein: beef').description === undefined);
+
+  const dir = path.join(repoRoot, 'recipes');
+  const files = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
+  const missing: string[] = [], bad: Array<[string, string]> = [];
+  for (const f of files) {
+    const raw = await fs.readFile(path.join(dir, f), 'utf8');
+    const d = parseRecipe(raw, f).meta.description;
+    if (!d) { missing.push(f); continue; }
+    const line = raw.split('\n').findIndex((l) => l.startsWith('description:'));
+    if (d.length > 160) bad.push([f, `${d.length} chars`]);
+    else if (/[—"]/.test(d)) bad.push([f, 'em dash or double quote inside']);
+    else if (!/^description: ".*"$/.test(raw.split('\n')[line] ?? '')) bad.push([f, 'not double-quoted']);
+    else if (!(raw.split('\n')[line - 1] ?? '').startsWith('name:')) bad.push([f, 'not right after name:']);
+  }
+  check(`live recipes/ (${files.length}): descriptions ≤ 160 chars, double-quoted, right after name:`, bad.length === 0, bad);
+  if (REAL) check(`live recipes/ (${files.length}): every recipe has a description`, files.length > 0 && missing.length === 0, missing);
+  else if (missing.length) console.log(`  (${missing.length} recipe(s) without a description: the Week tab shows none for them)`);
+
+  // the /api/state join: meals get their recipe's description by recipeFile
+  const { addRecipeMeta } = await import('../server/repo.ts');
+  const withDesc = files.find((f) => !missing.includes(f));
+  const meal = (recipeFile?: string) => ({ day: 'Sat', mealType: 'Dinner', dish: 'x', recipeFile, isNew: false, status: 'approved', flexible: false });
+  const planLike = { meals: [meal(withDesc), meal('not-written-yet.md'), meal('../CLAUDE.md'), meal(undefined)] } as unknown as import('../server/parse.ts').ParsedPlan;
+  await addRecipeMeta(planLike, null, undefined);
+  const got = planLike.meals.map((m) => m.description);
+  if (withDesc) {
+    const want = parseRecipe(await fs.readFile(path.join(dir, withDesc), 'utf8'), withDesc).meta.description;
+    check(`join: a meal linked to ${withDesc} carries its description`, !!want && got[0] === want, got[0]);
+  }
+  check('join: missing file, unsafe path and no link → no description', got[1] === undefined && got[2] === undefined && got[3] === undefined, got);
+  // …and the recipe's active time over the plan row's lock-day snapshot (one number per recipe, app-wide)
+  const activeOf = async (f: string) => parseRecipe(await fs.readFile(path.join(dir, f), 'utf8'), f).meta.active_time_min ?? 0;
+  const timed = (await Promise.all(files.map(async (f) => ((await activeOf(f)) > 0 ? f : null)))).find(Boolean);
+  if (timed) {
+    const stale = { meals: [{ ...meal(timed), timeMin: 1 }, { ...meal('not-written-yet.md'), timeMin: 25 }] } as unknown as import('../server/parse.ts').ParsedPlan;
+    await addRecipeMeta(stale);
+    check(`join: ${timed} shows the recipe's active time, a 🆕 without a file keeps the plan row's`,
+      stale.meals[0]!.timeMin === (await activeOf(timed)) && stale.meals[1]!.timeMin === 25, stale.meals.map((m) => m.timeMin));
+  }
+
+  // the Week tab renders the description, never the planner's rationale
+  const weekJs = await fs.readFile(path.join(repoRoot, 'app/public/js/10-week.js'), 'utf8');
+  check('Week tab: day cards read m.description, not plan.whys', weekJs.includes('m.description') && !/\bwhys\[/.test(weekJs));
 }
 
 // ---- pantry editor core (server/pantry.ts) ----
@@ -882,7 +972,7 @@ console.log('\ntrends:');
     const ip = computeTrends(plans, recipes, { weeks: 12, through: '2026-W42', inProgress: '2026-W42' });
     check('real: through + inProgress — W42 last, flagged, kept out of the summary',
       ip.weeks.at(-1)?.week === '2026-W42' && ip.weeks.at(-1)?.inProgress === true && !ip.summaryWeeks.includes('2026-W42')
-        && /^Last \d weeks \(W\d\d–W\d\d\): \d\.\d of [\d.]+ nights cooked, ~\d+ cal \/ \d+ g protein per serving, red meat \d+ nights?, plant protein \d+ nights?, avg rating \d\.\d/.test(ip.summary),
+        && /^Last \d weeks \([A-Z][a-z]{2} \d{1,2}–(?:[A-Z][a-z]{2} )?\d{1,2}\): \d\.\d of [\d.]+ nights cooked, ~\d+ cal \/ \d+ g protein per serving, red meat \d+ nights?, plant protein \d+ nights?, avg rating \d\.\d/.test(ip.summary),
       ip.summary);
     const early = computeTrends(plans, recipes, { weeks: 12, through: '2026-W40' });
     check('real: through drops later weeks', early.weeks.at(-1)?.week === '2026-W40', early.weeks.at(-1)?.week);
@@ -933,7 +1023,7 @@ console.log('\ntrends:');
     s?.lanes.chicken === 1 && s?.lanes.fish === 1 && s?.lanes.other === 1 && s?.lanes.red === 0 && s?.lanes.plant === 0
       && s?.avgRating === 4 && s?.newCount === 1, s);
   check('synthetic: one logged week is not enough for a two-week card, but the summary still reads',
-    computeTrends([synth], synthRecipes).summary.startsWith('Last week (W50): 3.0 of 5 nights cooked'),
+    computeTrends([synth], synthRecipes).summary.startsWith('Last week (Dec 5–11): 3.0 of 5 nights cooked'),
     computeTrends([synth], synthRecipes).summary);
 }
 
@@ -1105,6 +1195,151 @@ console.log('\ntrends:');
     cnOld === 'Cook nights: Mon, Sun (2 nights). No cooking: Tue, Wed, Thu, Fri, Sat.', cnOld);
 }
 
+// ---- move a dinner (server/move.ts): eligibility, ticked prep lines, the move prompt ----
+// The rules are pure, so they run on a synthetic locked week shaped like the
+// real 2026-W42 (Sat cooked and logged, Tue + Thu still to cook, the rest
+// flexible) with `today` and captures chosen per case. The prompt check writes
+// a throwaway locked file for 2099-W11 and always deletes it.
+{
+  const { checkMove, moveTargets, nightLogged, donePrepLines, moveFills, MOVE_PLACEHOLDERS } = await import('../server/move.ts');
+  const { buildPrompt } = await import('../server/runs.ts');
+  const { prepKey } = await import('../server/parse.ts');
+  const store = await import('../server/store.ts');
+  type Cap = import('../server/move.ts').CaptureLike;
+  console.log('\nmove a dinner:');
+
+  const THAW = '- [ ] **Mon 12, morning:** move the thigh bag from the freezer to the fridge for Tuesday\'s gochujang chicken (24 h+ thaw).';
+  const CUKES = '- [ ] **Tue 13, afternoon (optional):** smash + salt the cucumbers a few hours ahead.';
+  const weekMd = (o: { week?: string; status?: string; tue?: string; thu?: string; log?: string[] } = {}) => {
+    const week = o.week ?? '2026-W42';
+    return [
+      `# Week of October 10–16, 2026 (${week})`, '', `**Status:** ${o.status ?? 'locked (locked 2026-10-10 via app)'}`, '', '## Plan', '',
+      '| Day | Meal | Recipe | Servings | Active time | Cal/serving | Protein | Status |',
+      '|-----|------|--------|----------|-------------|-------------|---------|--------|',
+      '| Sat | dinner | [Coconut-Dill Salmon with Green Beans](../recipes/coconut-dill-salmon-green-beans-corn.md) | 8 | 20 min | ~740 | ~40 g | approved |',
+      '| Sun | — | flexible (leftovers / out) | | | | | — |',
+      '| Mon | — | flexible (leftovers / out) | | | | | — |',
+      `| Tue | dinner | [Sticky Gochujang-Glazed Chicken Thighs with Sesame Smashed Cucumbers](../recipes/gochujang-glazed-chicken-thighs.md) ⭐5 | 4 | 30 min | ~570 | ~40 g | ${o.tue ?? 'approved'} |`,
+      '| Wed | — | flexible (leftovers / out) | | | | | — |',
+      `| Thu | dinner | [Red Lentil Soup (Mercimek Çorbası) with Lemon](../recipes/red-lentil-soup.md) 🆕 | 4 | 30 min | ~600 | ~25 g | ${o.thu ?? 'approved'} |`,
+      '| Fri | — | flexible (leftovers / out) | | | | | — |',
+      '', '### Planning notes', '- **Tue:** Gochujang chicken, the free re-slot.', '- **Thu:** The red lentil soup.', '',
+      '## Prep timeline', '- [ ] **Sat 10, at the shop:** buy the salmon from the fresh case.', THAW, CUKES,
+      '- [ ] **Thu 15, morning:** pull the pitas from the freezer.', '',
+      '## Grocery list', '', '### Costco', '**Meat**', '- [ ] Fresh salmon, 3 lb', '',
+      '## Log', '', '| Day | Planned | Actually cooked | Rating (1–5) | Notes |', '|-----|---------|-----------------|--------------|-------|',
+      ...(o.log ?? ['| Sat | Coconut-dill salmon | as planned | 5 | |']), '',
+    ].join('\n');
+  };
+  const planOf = (o: Parameters<typeof weekMd>[0] = {}) => parsePlan(weekMd(o), `${o?.week ?? '2026-W42'}.md`);
+  const base = planOf();
+  // "Tue→Mon,Wed,Thu*,Fri | Thu→…": every allowed move, a swap starred
+  const show = (plan: ReturnType<typeof planOf>, today: string, captures: Record<string, Cap> = {}) =>
+    Object.entries(moveTargets({ plan, today, captures }))
+      .map(([from, list]) => `${from}→${list!.map((t) => `${t.day}${t.swapsWith ? '*' : ''}`).join(',')}`).join(' | ');
+
+  const mon = show(base, '2026-10-12');
+  check('Mon, nothing logged but Sat: Tue → Mon/Wed/Fri (plain) + Thu (swap); Thu → Mon/Wed/Fri + Tue (swap); Sat and flexible nights not movable',
+    mon === 'Tue→Mon,Wed,Thu*,Fri | Thu→Mon,Tue*,Wed,Fri', mon);
+  const tMon = moveTargets({ plan: base, today: '2026-10-12', captures: {} });
+  check('targets carry the date, and a swap carries the other dinner\'s dish',
+    JSON.stringify(tMon.Tue?.[1]) === '{"day":"Wed","date":"2026-10-14"}'
+      && tMon.Tue?.[2]?.swapsWith === 'Red Lentil Soup (Mercimek Çorbası) with Lemon' && tMon.Tue?.[2]?.date === '2026-10-15'
+      && tMon.Thu?.[1]?.swapsWith === 'Sticky Gochujang-Glazed Chicken Thighs with Sesame Smashed Cucumbers', tMon);
+  const tue = show(base, '2026-10-13');
+  check('Tue itself (tonight): still movable and swappable; Mon is past, so no longer a target', tue === 'Tue→Wed,Thu*,Fri | Thu→Tue*,Wed,Fri', tue);
+  const wed = show(base, '2026-10-14');
+  check('Wed, Tue an unlogged straggler: Tue → flexible nights only (no swap with Thu); Thu cannot move back onto Tue',
+    wed === 'Tue→Wed,Fri | Thu→Wed,Fri', wed);
+  const why = checkMove({ plan: base, today: '2026-10-14', captures: {} }, 'Tue', 'Thu');
+  check('…and the refusal says why (the endpoint\'s 409 text)',
+    !why.ok && why.why === 'Tuesday has passed, so its dinner can only move to a flexible night, and Thursday has a dinner planned.', why);
+  const fri = show(base, '2026-10-16');
+  check('Fri: both stragglers may still move onto tonight\'s flexible night', fri === 'Tue→Fri | Thu→Fri', fri);
+
+  const rated = show(base, '2026-10-13', { '2026-10-13': { rating: 4 } });
+  const skipped = show(base, '2026-10-13', { '2026-10-13': { dish: 'skipped — ate out' } });
+  const swapped = show(base, '2026-10-13', { '2026-10-13': { dish: 'takeout pizza' } });
+  check('captured but not folded (rating, skip, dish correction): that night is neither a source nor a swap target',
+    rated === 'Thu→Wed,Fri' && skipped === rated && swapped === rated, { rated, skipped, swapped });
+  const noteOnly = show(base, '2026-10-13', { '2026-10-13': { note: 'thighs still frozen' } as Cap });
+  check('a note-only capture does not log the night', noteOnly === tue, noteOnly);
+  const flexCap = show(base, '2026-10-12', { '2026-10-14': { dish: 'takeout' } });
+  check('a flexible night with a capture is not a target', flexCap === 'Tue→Mon,Thu*,Fri | Thu→Mon,Tue*,Fri', flexCap);
+  const fileLogged = show(planOf({ log: ['| Sat | Salmon | as planned | 5 | |', '| Tue | Gochujang chicken | as planned | | |', '| Wed | — | takeout | | |'] }), '2026-10-12');
+  check('Log-table rows count the same way (Tue cooked "as planned" unrated; Wed "takeout")', fileLogged === 'Thu→Mon,Fri', fileLogged);
+  check('nightLogged: an empty Log row is not logged; a rating, a cooked text, or a capture is',
+    !nightLogged([{ day: 'Tue', planned: 'x', cooked: '', notes: '' }], 'Tue', undefined)
+      && nightLogged([{ day: 'Tue', planned: 'x', cooked: '', rating: 3, notes: '' }], 'Tue', undefined)
+      && nightLogged([{ day: 'Tue', planned: 'x', cooked: 'skipped — no time', notes: '' }], 'Tue', undefined)
+      && nightLogged([], 'Tue', { dish: 'skipped — leftovers' }) && !nightLogged([], 'Tue', {}));
+
+  check('a week that is not locked → nothing (planning, complete)',
+    show(planOf({ status: 'planning' }), '2026-10-12') === '' && show(planOf({ status: 'complete (reviewed 2026-10-17)' }), '2026-10-12') === '');
+  check('only the week that contains today: the day before it starts and the day after it ends → nothing',
+    show(base, '2026-10-09') === '' && show(base, '2026-10-17') === '');
+  const notWeek = checkMove({ plan: base, today: '2026-10-09', captures: {} }, 'Tue', 'Wed');
+  check('…with a reason naming the week', !notWeek.ok && notWeek.why.startsWith('2026-W42 is not the week being cooked'), notWeek);
+  const rej = show(planOf({ thu: 'skipped' }), '2026-10-12');
+  check('a row whose Status is skipped/rejected is neither moved nor swapped with', rej === 'Tue→Mon,Wed,Fri', rej);
+  const bad = [checkMove({ plan: base, today: '2026-10-12', captures: {} }, 'Wed', 'Fri'), checkMove({ plan: base, today: '2026-10-12', captures: {} }, 'Tue', 'Tue'),
+    checkMove({ plan: base, today: '2026-10-12', captures: {} }, 'Tue', 'Sun'), checkMove({ plan: base, today: '2026-10-12', captures: {} }, 'Sat', 'Wed')];
+  check('refused: a flexible source, the same day, a day already past, a logged dinner',
+    bad.every((b) => !b.ok) && bad.map((b) => (b.ok ? '' : b.why)).join(' / ')
+      === '2026-W42 has no cook night on Wed. / That dinner is already on Tuesday. / Sunday has already passed. / Saturday\'s dinner is already logged.',
+    bad);
+
+  // ticked prep lines come back exactly as written; fills name a plain move vs a swap
+  const raw = weekMd();
+  const thawKey = prepKey('2026-W42', THAW.replace(/^- \[ \] /, ''));
+  check('prepKey is the parser\'s own key for the task', base.prep.some((p) => p.key === thawKey), base.prep.map((p) => p.key));
+  const doneLines = donePrepLines(raw, base, { [thawKey]: { at: 1 }, '2026-W42:shop:not-a-prep-task-1': { at: 1 } });
+  check('donePrepLines: only the ticked Prep-timeline line, byte-identical', doneLines.length === 1 && doneLines[0] === THAW, doneLines);
+  check('donePrepLines: nothing ticked → no lines', donePrepLines(raw, base, {}).length === 0);
+  const plain = moveFills(base, { day: 'Tue', to: 'Wed' }, []);
+  const swap = moveFills(base, { day: 'Tue', to: 'Thu' }, doneLines);
+  check('moveFills: a plain move onto a flexible night; dates and dish filled; "(none…)" when nothing is ticked',
+    plain.MOVE_FROM === 'Tue' && plain.MOVE_FROM_DATE === '2026-10-13' && plain.MOVE_TO === 'Wed' && plain.MOVE_TO_DATE === '2026-10-14'
+      && plain.MOVE_DISH.startsWith('Sticky Gochujang-Glazed Chicken Thighs') && plain.MOVE_KIND.includes('**plain move**: Tuesday becomes the flexible night')
+      && plain.DONE_PREP.startsWith('(none'), plain);
+  check('moveFills: a swap names the other dinner and where it goes; ticked lines listed',
+    swap.MOVE_KIND.includes('**swap**') && swap.MOVE_KIND.includes('Red Lentil Soup') && swap.MOVE_KIND.includes('moves to Tuesday (Tue 2026-10-13)')
+      && swap.DONE_PREP === THAW, swap);
+
+  // prompts/move.md ↔ buildPrompt: the template uses exactly the placeholders a move fills
+  const tpl = await fs.readFile(path.join(repoRoot, 'app/prompts/move.md'), 'utf8');
+  const used = [...new Set([...tpl.matchAll(/\{\{([A-Z_]+)\}\}/g)].map((m) => m[1]!))].sort();
+  check('move.md uses every placeholder a move fills, and no other', used.join(',') === [...MOVE_PLACEHOLDERS].sort().join(','),
+    { used, expected: [...MOVE_PLACEHOLDERS].sort() });
+  check('moveFills\' keys + WEEK/DATES/TODAY are that same list',
+    [...Object.keys(plain), 'WEEK', 'DATES', 'TODAY'].sort().join(',') === [...MOVE_PLACEHOLDERS].sort().join(','), Object.keys(plain));
+  const wk = '2099-W11';
+  const fixture = path.join(repoRoot, 'plans', `${wk}.md`);
+  const fxKey = prepKey(wk, THAW.replace(/^- \[ \] /, ''));
+  const fxDates = weekDates(wk);
+  try {
+    await fs.writeFile(fixture, weekMd({ week: wk }));
+    store.checks[fxKey] = { at: 0 };
+    const mv = await buildPrompt('move', wk, '', { move: { day: 'Tue', to: 'Wed' } });
+    check('move prompt (Tue → Wed): days, dates, dish, plain move, the ticked thaw line verbatim, no placeholder left',
+      mv.includes(`from Tue ${fxDates.Tue} to **Wed ${fxDates.Wed}**`) && mv.includes('(Sticky Gochujang-Glazed Chicken Thighs with Sesame Smashed Cucumbers)')
+        && mv.includes('**plain move**') && mv.includes(`\n${THAW}\n`) && mv.includes('`plans/2099-W11.md`')
+        && !/\{\{[A-Z_]+\}\}/.test(mv),
+      { left: mv.match(/\{\{[A-Z_]+\}\}/g), head: mv.slice(0, 420) });
+    const sw = await buildPrompt('move', wk, '', { move: { day: 'Thu', to: 'Tue' } });
+    check('move prompt (Thu → Tue): a swap that sends the chicken to Thursday',
+      sw.includes(`**swap**: that dinner moves to Thursday (Thu ${fxDates.Thu})`) && !/\{\{[A-Z_]+\}\}/.test(sw), sw.slice(0, 520));
+  } finally {
+    delete store.checks[fxKey];
+    await fs.rm(fixture, { force: true });
+  }
+  check('move fixture plan file removed', !(await pathExists(fixture)));
+  const noteLabel = parsePlan(['# W (2026-W42)', '', '## Plan', '', '### Planning notes', '- **Wed:** Gochujang chicken.',
+    '- **Moved (2026-10-12, via app):** Tuesday\'s gochujang chicken to Wednesday.', ''].join('\n'), '2026-W42.md');
+  check('a "Moved (…)" notes bullet is a note, not Monday\'s rationale', noteLabel.whys.Mon === undefined && noteLabel.whys.Wed === 'Gochujang chicken.'
+    && noteLabel.notes.length === 1, { whys: noteLabel.whys, notes: noteLabel.notes });
+}
+
 // ---- Recipes tab (UI round H): profile/ideas.md parser + import's JSON-LD /
 // readable-text extraction (app/scripts/fixtures/import-jsonld-page.html is a
 // synthetic WordPress-shaped page, not a real one). Pure functions only.
@@ -1174,6 +1409,173 @@ console.log('\nideas + import (Recipes tab):');
     files: [{ abs: '/tmp/x/p1.jpg', name: 'p1.jpg', type: 'image/jpeg', size: 300_000 }, { abs: '/tmp/x/p2.jpg', name: 'p2.jpg', type: 'image/jpeg', size: 310_000 }] });
   check('import: {{IMPORT_SOURCE}} for photos names each absolute path for the Read tool',
     fileBlock.includes('Read these files, in order, as one recipe') && fileBlock.includes('- /tmp/x/p1.jpg (image/jpeg') && fileBlock.includes('- /tmp/x/p2.jpg'), fileBlock);
+}
+
+// ---- the kitchen window: settings, Open-Meteo normalizers, cache, the fake (server/weather.ts)
+// ---- and the pure scene functions of public/js/05-window.js, loaded in a vm ----
+console.log('\nkitchen window (weather.ts + public/js/05-window.js):');
+{
+  const { settingError, setSettings } = await import('../server/store.ts');
+  const W = await import('../server/weather.ts');
+  const loc = { name: 'Testville', admin1: 'Ohio', country: 'United States', lat: 40.1, lon: -82.9, tz: 'America/New_York' };
+  check('settings: a geocoder place is a valid location', settingError('location', loc) === null, settingError('location', loc));
+  check('settings: admin1/country optional, tz may be empty', settingError('location', { name: 'X', lat: 0, lon: 0, tz: '' }) === null);
+  check('settings: lat 91 / lon -181 / string lat refused', settingError('location', { ...loc, lat: 91 }) !== null
+    && settingError('location', { ...loc, lon: -181 }) !== null && settingError('location', { ...loc, lat: '38' }) !== null);
+  check('settings: unknown field, empty or 81-char name, array refused', settingError('location', { ...loc, population: 5 }) !== null
+    && settingError('location', { ...loc, name: '  ' }) !== null && settingError('location', { ...loc, name: 'x'.repeat(81) }) !== null
+    && settingError('location', [loc]) !== null);
+  check('settings: tempUnit F / C ok, K refused', settingError('tempUnit', 'F') === null && settingError('tempUnit', 'C') === null && settingError('tempUnit', 'K') !== null);
+
+  const body = {
+    timezone: 'America/New_York',
+    current: { time: '2026-10-12T15:00', temperature_2m: 58.8, apparent_temperature: 54.4, is_day: 1, precipitation: 0.4, rain: 0.3, showers: 0.1, snowfall: 0, weather_code: 61, cloud_cover: 93, wind_speed_10m: 14.7 },
+    daily: { sunrise: ['2026-10-12T07:34'], sunset: ['2026-10-12T18:58'], temperature_2m_max: [74.9], temperature_2m_min: [58.4], weather_code: [3] },
+  };
+  const snap = W.normalizeForecast(body, loc, 'F', 1000);
+  check('forecast → snapshot (current, daily, flags)', snap.current.temp === 58.8 && snap.current.feelsLike === 54.4 && snap.current.isDay
+    && snap.current.code === 61 && snap.current.cloudCover === 93 && snap.current.windMph === 14.7 && snap.current.rainMm === 0.4
+    && snap.daily.sunrise === '2026-10-12T07:34' && snap.daily.sunset === '2026-10-12T18:58' && snap.daily.tmax === 74.9 && snap.daily.code === 3
+    && snap.stale === false && snap.unit === 'F' && snap.configured === true && snap.fetchedAt === 1000, snap);
+  let threw = false;
+  try { W.normalizeForecast({ current: { temperature_2m: 50 } }, loc, 'F', 0); } catch { threw = true; }
+  check('forecast without a weather code or sunrise throws (a failed fetch, never a half snapshot)', threw);
+  const geo = W.normalizeGeocode({ results: [
+    { name: 'Testville Dam', latitude: 40.2, longitude: -83, feature_code: 'DAM', admin1: 'Ohio', country: 'United States', timezone: 'America/New_York' },
+    { name: 'Testville', latitude: 40.1, longitude: -82.9, feature_code: 'PPLA2', admin1: 'Ohio', country: 'United States', timezone: 'America/New_York' },
+    { name: 'Nowhere', latitude: null, longitude: 3 },
+  ] });
+  check('geocode: towns first, rows without coordinates dropped, fields mapped', geo.length === 2 && geo[0]!.name === 'Testville'
+    && geo[0]!.lat === 40.1 && geo[0]!.tz === 'America/New_York' && geo[0]!.admin1 === 'Ohio' && geo[1]!.name === 'Testville Dam', geo);
+  const portlands = [{ name: 'Portland', admin1: 'Maine', lat: 43.7, lon: -70.3, tz: '' }, { name: 'Portland', admin1: 'Oregon', lat: 45.5, lon: -122.7, tz: '' }];
+  check('geocode: "Portland, OR" ranks Oregon first', W.rankByQualifier(portlands, ' OR')[0]!.admin1 === 'Oregon');
+
+  const fake = W.fakeSnapshot({ current: { code: 95, temp: 70 }, location: { name: 'Elsewhere' } }, null, 'F', new Date(2026, 9, 12, 15, 0).getTime());
+  check('fake: merged over the base, one level deep', fake.current.code === 95 && fake.current.temp === 70 && fake.current.cloudCover === 10
+    && fake.location.name === 'Elsewhere' && fake.location.lat === 0 && fake.fake === true && fake.daily.sunrise === '2026-10-12T07:15' && fake.current.isDay, fake);
+
+  // getWeather: no place → null; the fake; then the cache, stale-while-error and unavailable with a stubbed fetch
+  const realFetch = globalThis.fetch;
+  const prevFake = process.env.MEALAPP_WEATHER_FAKE;
+  try {
+    delete process.env.MEALAPP_WEATHER_FAKE;
+    setSettings({});
+    W.resetWeatherCache();
+    check('getWeather: no place set → null', (await W.getWeather()) === null);
+    process.env.MEALAPP_WEATHER_FAKE = '{"current":{"code":71}}';
+    const gf = await W.getWeather();
+    check('getWeather: MEALAPP_WEATHER_FAKE → the fake, with no place set', !!gf && 'current' in gf && gf.current.code === 71 && gf.fake === true);
+    process.env.MEALAPP_WEATHER_FAKE = 'not json';
+    check('getWeather: a malformed fake is ignored', (await W.getWeather()) === null);
+    delete process.env.MEALAPP_WEATHER_FAKE;
+
+    let calls = 0;
+    let fail = false;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (fail) throw new Error('network down');
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    setSettings({ location: loc });
+    const t0 = Date.now();
+    const a = await W.getWeather(t0);
+    const b = await W.getWeather(t0 + 5 * 60_000);
+    check('getWeather: fetched once, then served from the 10-minute cache', calls === 1 && !!a && 'current' in a && !a.stale && b === a, { calls });
+    fail = true;
+    const c = await W.getWeather(t0 + 11 * 60_000);
+    const c2 = await W.getWeather(t0 + 11.5 * 60_000);
+    check('getWeather: a failed refresh serves the last good one, stale, and waits a minute to retry',
+      calls === 2 && !!c && 'current' in c && c.stale === true && !!c2 && 'current' in c2 && c2.stale === true, { calls, c: c && 'stale' in c ? c.stale : c });
+    const d = await W.getWeather(t0 + 4 * 3600_000);
+    check('getWeather: past 3 hours with no good fetch → unavailable (no throw)', calls === 3 && !!d && 'unavailable' in d && d.error === 'network down', d);
+    fail = false;
+    setSettings({ location: loc, tempUnit: 'C' });
+    const e = await W.getWeather(t0 + 4 * 3600_000 + 1);
+    check('getWeather: changing the unit misses the cache and refetches', calls === 4 && !!e && 'current' in e && e.unit === 'C', { calls });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevFake === undefined) delete process.env.MEALAPP_WEATHER_FAKE; else process.env.MEALAPP_WEATHER_FAKE = prevFake;
+    setSettings({});
+    W.resetWeatherCache();
+  }
+
+  // the client's pure half, from the real file
+  const vm = await import('node:vm');
+  const ctx = vm.createContext({});
+  vm.runInContext(await fs.readFile(path.join(repoRoot, 'app/public/js/05-window.js'), 'utf8'), ctx, { filename: '05-window.js' });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const C = ctx as Record<string, any>;
+  const at = (h: number, m = 0) => new Date(2026, 9, 12, h, m); // local wall clock, any TZ
+  const ph = (h: number, m: number) => C.scenePhase(at(h, m), '2026-10-12T07:19', '2026-10-12T18:40').phase;
+  const seq = [[3, 0], [6, 45], [7, 15], [8, 30], [12, 0], [17, 45], [18, 40], [19, 10], [20, 0]].map(([h, m]) => ph(h!, m!)).join(',');
+  check('scenePhase: night,dawn,sunrise,morning,day,golden,sunset,dusk,night across Oct 12', seq === 'night,dawn,sunrise,morning,day,golden,sunset,dusk,night', seq);
+  const sp = C.scenePhase(at(12, 59), '07:19', '18:40');
+  check('scenePhase: sunP 0 at sunrise, 1 at sunset, ~.5 at solar noon', C.scenePhase(at(7, 19), '07:19', '18:40').sunP === 0
+    && C.scenePhase(at(18, 40), '07:19', '18:40').sunP === 1 && Math.abs(sp.sunP - .5) < .01, sp.sunP);
+  check('scenePhase: bad sunrise/sunset → the 07:00 / 18:30 defaults', C.scenePhase(at(12), 'nope', '').sr === 420 && C.scenePhase(at(12), 'nope', '').ss === 1110);
+  let maxJump = 0;
+  let prev: string | null = null;
+  for (let m = 0; m < 1440; m++) {
+    const top = C.windowScene({ now: at(Math.floor(m / 60), m % 60), wx: null }).sky[0] as string;
+    if (prev) for (let i = 1; i < 7; i += 2) maxJump = Math.max(maxJump, Math.abs(parseInt(top.slice(i, i + 2), 16) - parseInt(prev.slice(i, i + 2), 16)));
+    prev = top;
+  }
+  check('sky: no jump at phase edges (max channel change per minute ≤ 10 across the day)', maxJump <= 10, maxJump);
+  const clearDay = C.skyStops('day', 0), greyDay = C.skyStops('day', 100, 'rain');
+  const sat = (hex: string) => { const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)); return Math.max(...v) - Math.min(...v); };
+  check('skyStops: 4 stops; full cloud + rain greys the sky', clearDay.length === 4 && sat(greyDay[0]) < sat(clearDay[0]) / 2, { clearDay, greyDay });
+
+  const kinds = [[0, 'clear'], [1, 'partly'], [2, 'partly'], [3, 'overcast'], [45, 'fog'], [48, 'fog'], [51, 'drizzle'], [57, 'drizzle'], [61, 'rain'],
+    [67, 'rain'], [71, 'snow'], [77, 'snow'], [80, 'rain'], [82, 'rain'], [85, 'snow'], [86, 'snow'], [95, 'storm'], [99, 'storm']];
+  const badKinds = kinds.filter(([code, kind]) => C.conditions(code, true).kind !== kind);
+  check('conditions: every WMO group maps to its kind', !badKinds.length, badKinds);
+  check('conditions: labels (61 light rain, 0 sunny by day / clear at night)', C.conditions(61, true).label === 'light rain'
+    && C.conditions(0, true).label === 'sunny' && C.conditions(0, false).label === 'clear' && C.conditions(65).intensity === 1);
+  const sk = (mo: number, lat: number) => C.season(mo, lat).key;
+  check('season: Oct north autumn, Oct south spring, Jan winter, Jul south winter, Sep early, Nov thinning, Apr blossom',
+    sk(10, 38) === 'autumn' && sk(10, -34) === 'spring' && sk(1, 38) === 'winter' && sk(7, -34) === 'winter' && sk(9, 38) === 'early-autumn'
+    && C.season(11, 38).leaf === .55 && C.season(12, 38).leaf === 0 && !!C.season(4, 38).blossom,
+    [10, 1, 4, 7, 9, 11, 12].map((m) => sk(m, 38)));
+  const newMoon = C.moonPhase(new Date(Date.UTC(2024, 3, 8, 18, 21))); // the April 2024 eclipse
+  const fullMoon = C.moonPhase(new Date(Date.UTC(2024, 3, 23, 23, 49)));
+  check('moonPhase: 2024-04-08 new, 2024-04-23 full', (newMoon.phase < .02 || newMoon.phase > .98) && Math.abs(fullMoon.phase - .5) < .02
+    && fullMoon.illum > .99 && fullMoon.name === 'full moon', { newMoon, fullMoon });
+  check('moon drawing: first quarter lit on the right (north), left (south); full = two half-discs',
+    C.wxMoonPath(100, 50, 8, .25, false).includes('A8 8 0 0 1') && C.wxMoonPath(100, 50, 8, .25, true).includes('A8 8 0 0 0')
+    && /A8 8 0 0 (\d) 100 58A8 8 0 0 \1 100 42Z$/.test(C.wxMoonPath(100, 50, 8, .5, false)), C.wxMoonPath(100, 50, 8, .5, false));
+  check('parseScene: rain-night, snow-day-jan, partly-dusk-4, a moon word; junk → null', C.parseScene('rain-night').cond === 'rain'
+    && C.parseScene('rain-night').phase === 'night' && C.parseScene('snow-day-jan').month === 1 && C.parseScene('partly-dusk-4').month === 4
+    && C.parseScene('bogus-day') === null && C.parseScene('rain-noon') === null && C.parseScene('') === null
+    && C.parseScene('clear-night-full').moon === .5 && C.parseScene('clear-night-gibbous-jan').month === 1);
+
+  // every condition × phase × season: the forced phase lands, no NaN/undefined, ≤ 120 SVG nodes
+  let maxNodes = 0, worst = '';
+  const broken: string[] = [];
+  for (const cond of C.WX_CONDS ?? vm.runInContext('WX_CONDS', ctx)) {
+    for (const phase of vm.runInContext('WX_PHASES', ctx) as string[]) {
+      for (const month of [1, 4, 7, 10, 11]) {
+        const sc = C.windowScene({ now: at(15), wx: null, forced: { cond, phase, month } });
+        const svg: string = C.windowSvg(sc, 1_760_000_000);
+        const nodes = (svg.match(/<(?!\/)[a-zA-Z]/g) ?? []).length;
+        if (nodes > maxNodes) { maxNodes = nodes; worst = `${cond}-${phase}-${month}`; }
+        if (sc.phase !== phase || /NaN|undefined|Infinity/.test(svg)) broken.push(`${cond}-${phase}-${month}`);
+      }
+    }
+  }
+  console.log(`  ..  largest scene: ${maxNodes} SVG nodes (${worst})`);
+  check('windowSvg: every condition × phase × season draws, lands on its phase, ≤ 120 nodes', !broken.length && maxNodes <= 120, { broken, maxNodes, worst });
+  const live = { configured: true, location: loc, unit: 'F', fetchedAt: at(15).getTime(), stale: false,
+    current: { temp: 58.8, feelsLike: 54, code: 61, isDay: true, cloudCover: 93, windMph: 9, precipMm: .4, rainMm: .4, snowCm: 0 },
+    daily: { sunrise: '2026-10-12T07:34', sunset: '2026-10-12T18:58', tmax: 75, tmin: 58, code: 61 } };
+  const cap = (h: number, wx: unknown, nowH = h) => C.windowCaption(wx, C.windowScene({ now: at(h), wx }), at(nowH).getTime());
+  const c15 = cap(15, live);
+  check('caption: "59° · light rain · Testville" / "sunset 6:58 pm"; aria in words', c15.left === '59° · light rain · Testville'
+    && c15.right === 'sunset 6:58 pm' && c15.aria === 'Kitchen window: light rain, 59 degrees, afternoon, Testville', c15);
+  check('caption: sunrise after sunset and before dawn', cap(21, live).right === 'sunrise 7:34 am' && cap(5, live).right === 'sunrise 7:34 am');
+  const old = { ...live, fetchedAt: at(13, 10).getTime() };
+  check('caption: over an hour old → "as of 1:10 pm" in place of the town', cap(15, old).left === '59° · light rain · as of 1:10 pm', cap(15, old).left);
+  check('caption: no place → the set-your-location prompt', cap(15, { configured: false }).unset === true
+    && cap(15, { configured: false }).left === 'Set your location to see the weather →');
 }
 
 // ---------- commit.ts + pantry commit subjects (workstream I) ----------
@@ -1261,8 +1663,8 @@ console.log('\nnotify (push copy + delivery guards):');
   });
   const sProp = st({ ahead: { week: '2026-W43', plan: proposal } });
   const pr = N.runDonePayload([info('propose', '2026-W43', '- Proposed 2026-W43')], sProp);
-  check('notify: propose → "W43 proposal ready" · "4 meals to decide" · /?tab=next · tag run-propose-2026-W43',
-    pr?.title === 'W43 proposal ready' && pr.body === '4 meals to decide' && pr.url === '/?tab=next' && pr.tag === 'run-propose-2026-W43', pr);
+  check('notify: propose → "Proposal ready for next week" · "4 meals to decide" · /?tab=next · tag run-propose-2026-W43',
+    pr?.title === 'Proposal ready for next week' && pr.body === '4 meals to decide' && pr.url === '/?tab=next' && pr.tag === 'run-propose-2026-W43', pr);
   const sPropFb = st({ ahead: { week: '2026-W43', plan: proposal }, feedback: { meals: { Sat: { decision: 'approve', at: 1 } } } });
   check('notify: a Next-tab decision counts as decided ("3 meals to decide")', N.proposeBody(sPropFb, '2026-W43') === '3 meals to decide', N.proposeBody(sPropFb, '2026-W43'));
   check('notify: propose with no plan file found → a generic body, still a notice',
@@ -1281,8 +1683,8 @@ console.log('\nnotify (push copy + delivery guards):');
   });
   const sLock = st({ ahead: { week: '2026-W43', plan: locked } });
   const lk = N.runDonePayload([info('lock', '2026-W43', '- Locked')], sLock);
-  check('notify: lock → "W43 locked" · "Costco 2 items · Kroger 11" · /?tab=shop',
-    lk?.title === 'W43 locked' && lk.body === 'Costco 2 items · Kroger 11' && lk.url === '/?tab=shop' && lk.tag === 'run-lock-2026-W43', lk);
+  check('notify: lock → "Next week locked" · "Costco 2 items · Kroger 11" · /?tab=shop',
+    lk?.title === 'Next week locked' && lk.body === 'Costco 2 items · Kroger 11' && lk.url === '/?tab=shop' && lk.tag === 'run-lock-2026-W43', lk);
   check('notify: lock with no grocery list → generic body', N.lockBody(st(), '2026-W43') === 'The grocery list is on the Shop tab');
 
   // chains: one notice for the whole chain
@@ -1290,49 +1692,70 @@ console.log('\nnotify (push copy + delivery guards):');
     info('review', '2026-W42', '- Closed out 2026-W42.', true, { step: 1, of: 2, types: ['review', 'propose'] }),
     info('propose', '2026-W43', '- Proposed', true, { step: 2, of: 2, types: ['review', 'propose'] }),
   ], sProp);
-  check('notify: close-and-plan chain → "W42 closed out · W43 proposal ready" · "4 meals to decide" · /?tab=next',
-    cp?.title === 'W42 closed out · W43 proposal ready' && cp.body === '4 meals to decide' && cp.url === '/?tab=next' && cp.tag === 'run-propose-2026-W43', cp);
+  check('notify: close-and-plan chain → "Closed out this week · proposed next week" · "4 meals to decide" · /?tab=next',
+    cp?.title === 'Closed out this week · proposed next week' && cp.body === '4 meals to decide' && cp.url === '/?tab=next' && cp.tag === 'run-propose-2026-W43', cp);
   const sl = N.runDonePayload([
     info('revise', '2026-W43', '- Swapped Tue.', true, { step: 1, of: 2, types: ['revise', 'lock'] }),
     info('lock', '2026-W43', '- Locked', true, { step: 2, of: 2, types: ['revise', 'lock'] }),
   ], sLock);
-  check('notify: send-and-lock chain → "W43 revised and locked" · the lock body · /?tab=shop',
-    sl?.title === 'W43 revised and locked' && sl.body === 'Costco 2 items · Kroger 11' && sl.url === '/?tab=shop', sl);
+  check('notify: send-and-lock chain → "Next week revised and locked" · the lock body · /?tab=shop',
+    sl?.title === 'Next week revised and locked' && sl.body === 'Costco 2 items · Kroger 11' && sl.url === '/?tab=shop', sl);
 
   // failures
   const f1 = N.runDonePayload([info('propose', '2026-W43', 'Claude error: overloaded (529)\nstack…', false)], sProp);
-  check('notify: failed run → "Run failed: propose W43" · error first line · the relevant tab',
-    f1?.title === 'Run failed: propose W43' && f1.body === 'Claude error: overloaded (529)' && f1.url === '/?tab=next' && f1.tag === 'run-propose-2026-W43', f1);
+  check('notify: failed run → "Run failed: propose, next week" · error first line · the relevant tab',
+    f1?.title === 'Run failed: propose, next week' && f1.body === 'Claude error: overloaded (529)' && f1.url === '/?tab=next' && f1.tag === 'run-propose-2026-W43', f1);
   const f2 = N.runDonePayload([
     info('review', '2026-W42', '- Closed out', true, { step: 1, of: 2, types: ['review', 'propose'] }),
     info('propose', '2026-W43', 'Not started: 2026-W43 got a plan file while 2026-W42 was closing.', false, { step: 2, of: 2, types: ['review', 'propose'] }),
   ], sProp);
   check('notify: a chain failing at step 2 says the finished step went through',
-    f2?.title === 'Run failed: propose W43' && f2.body === 'W42 closed out ✓. Not started: 2026-W43 got a plan file while 2026-W42 was closing.', f2);
+    f2?.title === 'Run failed: propose, next week'
+      && f2.body === 'This week closed out ✓. Not started: Oct 17–23 got a plan file while Oct 10–16 was closing.', f2);
   const f3 = N.runDonePayload([info('review', '2026-W42', 'Mock review failure (MEALAPP_MOCK_FAIL).', false)], sProp);
-  check('notify: failed close-out points at the Week tab', f3?.title === 'Run failed: review W42' && f3.url === '/?tab=week', f3);
+  check('notify: failed close-out points at the Week tab', f3?.title === 'Run failed: review, this week' && f3.url === '/?tab=week', f3);
   const f4 = N.runDonePayload([info('lock', '2026-W43', 'Stopped by user.', false)], sProp);
-  check('notify: a Stop reads "Run stopped: lock W43"', f4?.title === 'Run stopped: lock W43', f4);
+  check('notify: a Stop reads "Run stopped: lock, next week"', f4?.title === 'Run stopped: lock, next week', f4);
   check('notify: fold and ask never send run-done',
     N.runDonePayload([info('fold', '', '- Folded')], sProp) === null && N.runDonePayload([info('ask', '', 'answer')], sProp) === null);
 
   // summary-derived bodies
   const rv = N.runDonePayload([info('revise', '2026-W43',
     '_Mock run (MEALAPP_MOCK_RUNS): nothing was written or committed._\n\n- **Revised** 2026-W43: Tue swapped for `miso cod`; see [the plan](plans/2026-W43.md).')], sProp);
-  check('notify: revise body = first summary line, markdown stripped, mock header skipped',
-    rv?.title === 'W43 revised' && rv.body === 'Revised 2026-W43: Tue swapped for miso cod; see the plan.' && rv.url === '/?tab=next', rv);
+  check('notify: revise body = first summary line, markdown stripped, mock header skipped, ids as dates',
+    rv?.title === 'Next week revised' && rv.body === 'Revised Oct 17–23: Tue swapped for miso cod; see the plan.' && rv.url === '/?tab=next', rv);
   const longLine = N.firstLine(`- ${'word '.repeat(60)}`);
   check('notify: summary first line is capped at 120 chars with an ellipsis', longLine.length <= 120 && longLine.endsWith('…'), longLine);
   const rs = N.runDonePayload([info('rescale', '2026-W42', 'Rescaled Sat salmon to 9 servings: list and bulk notes updated.')], sProp);
-  check('notify: rescale → "List updated for W42" · summary line · /?tab=shop',
-    rs?.title === 'List updated for W42' && rs.body === 'Rescaled Sat salmon to 9 servings: list and bulk notes updated.' && rs.url === '/?tab=shop', rs);
+  check('notify: rescale → "List updated for this week" · summary line · /?tab=shop',
+    rs?.title === 'List updated for this week' && rs.body === 'Rescaled Sat salmon to 9 servings: list and bulk notes updated.' && rs.url === '/?tab=shop', rs);
+  const mvd = N.runDonePayload([info('move', '2026-W42', 'Tuesday\'s gochujang chicken is now Wednesday. The thigh thaw moved to Tue morning.')], sProp);
+  check('notify: move → "Dinner moved" · summary line · /?tab=week',
+    mvd?.title === 'Dinner moved' && mvd.body === 'Tuesday\'s gochujang chicken is now Wednesday. The thigh thaw moved to Tue morning.'
+      && mvd.url === '/?tab=week' && mvd.tag === 'run-move-2026-W42', mvd);
   const rw = N.runDonePayload([info('review', '2026-W42', '## Week review\nClosed out 2026-W42: three nights, avg 4.7.')], sProp);
-  check('notify: review → "W42 closed out" · first line · /?tab=week', rw?.title === 'W42 closed out' && rw.body === 'Week review' && rw.url === '/?tab=week', rw);
+  check('notify: review → "This week closed out" · first line · /?tab=week', rw?.title === 'This week closed out' && rw.body === 'Week review' && rw.url === '/?tab=week', rw);
   const id8 = N.runDonePayload([info('ideas', '', '- Added 8 dishes')], sProp, { ideasCount: 8 });
   check('notify: ideas → "New ideas ready" · "8 dishes to browse" · /?tab=recipes',
     id8?.title === 'New ideas ready' && id8.body === '8 dishes to browse' && id8.url === '/?tab=recipes' && id8.tag === 'run-ideas', id8);
   const im = N.runDonePayload([info('import', '', '- Wrote recipes/lemony-chickpea-stew.md')], sProp, { importName: 'Lemony Chickpea Stew' });
   check('notify: import → "Recipe imported" · the recipe name', im?.title === 'Recipe imported' && im.body === 'Lemony Chickpea Stew' && im.url === '/?tab=recipes', im);
+
+  // week names are relative to the day the notice goes out
+  const sSat = st({ today: '2026-10-17', ahead: { week: '2026-W43', plan: proposal } }); // Saturday: W43 is this week
+  const satRw = N.runDonePayload([info('review', '2026-W42', '- Closed out')], sSat);
+  check('notify: Saturday morning, closing W42 reads "Last week closed out"', satRw?.title === 'Last week closed out', satRw);
+  const satCp = N.runDonePayload([
+    info('review', '2026-W42', '- Closed out', true, { step: 1, of: 2, types: ['review', 'propose'] }),
+    info('propose', '2026-W43', '- Proposed', true, { step: 2, of: 2, types: ['review', 'propose'] }),
+  ], sSat);
+  check('notify: Saturday close-and-plan → "Closed out last week · proposed this week"', satCp?.title === 'Closed out last week · proposed this week', satCp);
+  const far = N.runDonePayload([info('lock', '2026-W45', '- Locked')], sProp);
+  check('notify: a week with no relative name uses its dates ("Oct 31–Nov 6 locked")', far?.title === 'Oct 31–Nov 6 locked', far);
+  const all = [pr, lk, cp, sl, f1, f2, f3, f4, rv, rs, rw, id8, im, satRw, satCp, far];
+  check('notify: no run-done title or body carries a week id',
+    all.every((p) => p && !/\bW\d\d\b|\d{4}-W\d{2}/.test(`${p.title} ${p.body}`)), all.map((p) => p && `${p.title} | ${p.body}`));
+  check('notify: run-done titles stay within ~40 chars', all.every((p) => p && p.title.length <= 41), all.map((p) => p && [p.title, p.title.length]));
 
   // record-updated: the client toast's wording (00-core.js noteFoldState / foldedLabel)
   const rec = N.recordPayload([

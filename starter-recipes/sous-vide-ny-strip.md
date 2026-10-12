@@ -1,5 +1,6 @@
 ---
 name: Sous Vide NY Strip with Roasted Broccoli
+description: "Medium-rare NY strip steaks, cooked sous vide then seared hard and basted with garlic-herb butter, sliced over charred roasted broccoli."
 cuisine: american
 protein: beef-strip-steak
 method: [sous-vide, sear, roast]

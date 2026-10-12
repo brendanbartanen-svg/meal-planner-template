@@ -1,5 +1,6 @@
 ---
 name: Sticky Gochujang-Glazed Chicken Thighs with Sesame Smashed Cucumbers
+description: "Seared chicken thighs lacquered in a sweet-hot gochujang-honey glaze, with cold sesame smashed cucumbers and jasmine rice."
 cuisine: korean
 protein: chicken-thigh
 method: [stovetop, skillet]

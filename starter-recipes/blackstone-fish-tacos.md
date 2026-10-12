@@ -1,5 +1,6 @@
 ---
 name: Blackstone Fish Tacos with Chipotle-Lime Crema & Charred Cabbage Slaw
+description: "Chile-rubbed white fish griddled and flaked into corn tortillas with smoky chipotle-lime crema, charred cabbage slaw and avocado."
 cuisine: mexican
 protein: white-fish
 method: [blackstone, griddle]

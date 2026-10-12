@@ -49,7 +49,7 @@ function renderShop() {
 
   if (!g) {
     html += `<div class="pending"><span class="when">waiting on the plan</span>
-      <h2>No list yet for ${esc(shortWeek(w))}</h2>
+      <h2>No list yet for ${esc(weekName(w))}</h2>
       <p>${shop.planned ? 'The list is built when the plan locks — finish approvals on the Next tab.' : 'Plan it on the Next tab; the grocery list is generated when the week locks.'}</p></div>`;
     v.innerHTML = html;
     return;

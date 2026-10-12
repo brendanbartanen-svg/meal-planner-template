@@ -1,5 +1,6 @@
 ---
 name: Blackstone Chicken Shawarma with Garlic-Yogurt Sauce
+description: "Yogurt-and-spice marinated chicken thighs griddled until charred and chopped, piled into warm pita with garlic-yogurt sauce, pickled onion and salad."
 cuisine: middle-eastern
 protein: chicken-thigh
 method: [blackstone, griddle]

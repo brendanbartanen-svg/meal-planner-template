@@ -179,22 +179,6 @@ function prepBlock(tasks) {
   }).join('') + `</div>`;
 }
 
-// Tonight's rationale: its first sentence is the pull-quote, the rest reads as
-// a normal paragraph (display only; rationales often run to a paragraph).
-function whyParts(text) {
-  const s = String(text ?? '');
-  let depth = 0;
-  for (let i = 20; i < s.length - 2; i++) {
-    const c = s[i];
-    if (c === '(') depth++;
-    else if (c === ')') depth = Math.max(0, depth - 1);
-    else if (!depth && (c === '.' || c === '!' || c === '?') && s[i + 1] === ' ' && /[A-Z“"‘(]/.test(s[i + 2])) {
-      return [s.slice(0, i + 1), s.slice(i + 2)];
-    }
-  }
-  return [s, ''];
-}
-
 // Consecutive flexible nights share one ruled index (.flexgroup) instead of a card each.
 function joinRows(list) {
   let out = '';
@@ -237,6 +221,73 @@ function weekServHtml(week, m) {
   const k = `${week}|${m.day}`;
   return `<details class="wkserv" data-wkserv="${esc(k)}"${wkServOpen.has(k) ? ' open' : ''}>
     <summary>${ico('people')}${n} servings <span class="caret" aria-hidden="true">${ico('down')}</span></summary>${servingsHtml(m, n, 'locked')}</details>`;
+}
+
+/* Move a dinner to another day of the week being cooked. Where it may go is
+   the server's call: each meal of the cooking week carries `moveTo`
+   ([{ day, date, swapsWith? }], server/move.ts) in /api/state. A folded "Move"
+   toggle beside the servings one opens a chip per target; a tap confirms, then
+   POST /api/runs/move starts the light move run (plan rows, planning note,
+   prep dates). Shown on tonight, Coming up and unlogged Earlier cards. */
+const wkMoveOpen = new Set(); // `${week}|${day}` toggles left open, kept across re-renders
+/* m.moveTo, minus what a capture since the last /api/state has settled (a star
+   tap never refetches state): a night with a rating or a dish capture is
+   logged, so it is neither moved nor moved onto. Same test as syncCloseReady;
+   the server re-checks every move. */
+function moveTargetsNow(m, dates) {
+  const logged = (date) => { const c = state.captures[date]; return !!(c && (c.rating !== undefined || c.dish)); };
+  if (!m.moveTo?.length || logged(dates[m.day])) return [];
+  return m.moveTo.filter((t) => !logged(t.date));
+}
+/** A dish as a chip or a confirm names it: its head, parenthetical dropped, clipped. */
+function moveDishShort(dish, max = 30) {
+  const h = dishParts(dish)[0].replace(/\s*\([^)]*\)/g, '').trim() || String(dish ?? '');
+  return h.length > max ? `${h.slice(0, max - 1).trimEnd()}…` : h;
+}
+function weekMoveHtml(week, m, targets) {
+  const k = `${week}|${m.day}`;
+  const off = runActive() ? ' disabled' : '';
+  const chips = targets.map((t) => {
+    const label = `${t.day} ${dpart(t.date).d}${t.swapsWith ? ` · swap with ${moveDishShort(t.swapsWith)}` : ''}`;
+    return `<button type="button" class="tchip" data-move-to="${esc(t.day)}"${off}>${esc(label)}</button>`;
+  }).join('');
+  return `<details class="wkserv wkmove" data-wkmove="${esc(k)}"${wkMoveOpen.has(k) ? ' open' : ''}>
+    <summary>${ico('swap')}Move <span class="caret" aria-hidden="true">${ico('down')}</span></summary>
+    <div class="movebox" data-move-day="${esc(m.day)}">
+      <div class="chipslabel">Move to</div>
+      <div class="movechips" role="group" aria-label="Move ${esc(SERV_DAY_NAMES[m.day] ?? m.day)}'s dinner to">${chips}</div>
+    </div></details>`;
+}
+/** A day card's folded controls on one line: servings (tonight and later), then Move. */
+function weekCtlHtml(week, m, canRescale, targets) {
+  if (!canRescale && !targets.length) return '';
+  return `<div class="wkctl">${canRescale ? weekServHtml(week, m) : ''}${targets.length ? weekMoveHtml(week, m, targets) : ''}</div>`;
+}
+function wireMove(root, week, meals) {
+  root.querySelectorAll('.movebox').forEach((box) => {
+    const day = box.dataset.moveDay;
+    const m = meals.find((x) => x.day === day && !x.flexible);
+    if (!m) return;
+    const chips = box.querySelectorAll('[data-move-to]');
+    chips.forEach((b) => {
+      b.onclick = async () => {
+        const t = (m.moveTo ?? []).find((x) => x.day === b.dataset.moveTo);
+        if (!t) return;
+        const from = SERV_DAY_NAMES[day] ?? day, to = SERV_DAY_NAMES[t.day] ?? t.day;
+        const msg = t.swapsWith
+          ? `Swap ${from}'s dinner (${moveDishShort(m.dish, 40)}) with ${to}'s (${moveDishShort(t.swapsWith, 40)})? Claude will update the plan and re-date the prep for both.`
+          : `Move ${from}'s dinner (${moveDishShort(m.dish, 40)}) to ${to}? Claude will update the plan and re-date its prep.`;
+        if (!confirm(msg)) return;
+        chips.forEach((x) => { x.disabled = true; });
+        const j = await expectOk(await jpost('/api/runs/move', { week, day, to: t.day }), 'Could not start the move.');
+        if (j) wkMoveOpen.delete(`${week}|${day}`); // the run strip takes over; the card comes back folded
+        else chips.forEach((x) => { x.disabled = false; });
+      };
+    });
+  });
+  root.querySelectorAll('details.wkmove').forEach((d) => d.addEventListener('toggle', () => {
+    if (d.open) wkMoveOpen.add(d.dataset.wkmove); else wkMoveOpen.delete(d.dataset.wkmove);
+  }));
 }
 
 /* ---------- Get started (first-run onboarding; the template's fresh install) ----------
@@ -312,12 +363,13 @@ function renderWeek() {
     return;
   }
   const { plan, dates, week, fallback } = state.cooking;
-  let html = setupCardHtml() + resultCard(['fold', 'review', 'rescale']);
-  if (fallback) html += `<div class="warnnote"><b>Showing ${esc(week)}</b> — the current week has no locked plan yet.</div>`;
+  let html = setupCardHtml() + resultCard(['fold', 'review', 'rescale', 'move']);
+  if (fallback) html += `<div class="warnnote"><b>Showing ${esc(weekName(week, 'of'))}</b> — the current week has no locked plan yet.</div>`;
 
   // carry: unlogged stragglers from the previous week, one dashed saffron card
   if (state.carry.length) {
-    html += `<section class="carry" aria-label="Still unlogged from last week"><div class="carrylabel">Still unlogged from last week</div>` +
+    const from = `Still unlogged from ${weekName(state.carry[0].week)}`; // "last week", unless the cooking week is a fallback
+    html += `<section class="carry" aria-label="${esc(from)}"><div class="carrylabel">${esc(from)}</div>` +
       state.carry.map((c) => `<div class="crow">
         <div class="dow">${esc(c.day)}<small>${dpart(c.date).d}</small></div>
         <div class="daybody">
@@ -368,16 +420,19 @@ function renderWeek() {
       !canRescale && Number(m.servings) > 0 && Number(m.servings) !== 4 && `${m.servings} servings`]); // Plan table's Servings column; 4 = the default, unsaid
     const [head, side] = dishParts(m.dish);
     const title = `<h3>${keepHyphens(head)}</h3>${side ? `<p class="with">${esc(side)}</p>` : ''}`;
-    const why = plan.whys[m.day] ?? '';
+    // what the dish is (recipe frontmatter `description`, joined server-side);
+    // the planner's rationale (plan.whys) stays on the Next tab's decide view
+    const desc = m.description ?? '';
     const prepLog = prepBlock(prepByDate.get(date) ?? []) + logBlock(date, m.dish, fileLog?.rating, fileLog?.cooked);
+    // folded controls: servings (tonight and later) and Move (an unlogged dinner with somewhere to go)
+    const ctl = weekCtlHtml(week, m, canRescale, moveTargetsNow(m, dates));
     if (tonight) {
-      const [pull, whyRest] = whyParts(why);
       rows.tonight.push({ flex: false, html: `<article class="day tonight hero" aria-label="Tonight">
         <div class="hero-top"><span class="tonightbadge">Tonight</span><span class="when">${m.day} ${dnum}</span>${badge}</div>
         ${title}
         ${meta ? `<div class="meta">${m.timeMin ? ico('clock') : ''}${meta}</div>` : ''}
-        ${canRescale ? weekServHtml(week, m) : ''}
-        ${pull ? `<blockquote class="pull">${esc(pull)}</blockquote>` : ''}${whyRest ? `<p class="why">${esc(whyRest)}</p>` : ''}
+        ${ctl}
+        ${desc ? `<blockquote class="pull">${esc(desc)}</blockquote>` : ''}
         ${m.recipeFile ? `<div class="hero-actions"><a class="btn btn-primary" href="#" data-cook="${esc(m.recipeFile)}">Cook${ico('arrow')}</a><a class="btn btn-ghost" href="#" data-recipe="${esc(m.recipeFile)}">Recipe</a></div>` : ''}
         ${prepLog}
       </article>` });
@@ -389,8 +444,8 @@ function renderWeek() {
         ${badge ? `<div class="chiprow">${badge}</div>` : ''}
         ${title}
         ${meta ? `<div class="meta">${meta}</div>` : ''}
-        ${canRescale ? weekServHtml(week, m) : ''}
-        ${why ? `<p class="why">${esc(why)}</p>` : ''}
+        ${ctl}
+        ${desc ? `<p class="why">${esc(desc)}</p>` : ''}
         ${m.recipeFile ? `<div class="daylinks"><a href="#" data-recipe="${esc(m.recipeFile)}">Recipe${ico('arrow')}</a></div>` : ''}
         ${prepLog}
       </div>
@@ -412,13 +467,15 @@ function renderWeek() {
       // one chained run (review → propose) while nobody has to watch it.
       const t = state.typical ?? {};
       const usual = t.review && t.propose ? ` Usually about ${mins(t.review + t.propose)} min for both.` : '';
-      html += `<div class="card closeout" id="closeout-card"><h2>Close out ${esc(shortWeek(week))} and plan ${esc(shortWeek(nextW))}</h2>
-        <p class="hint">Every night is logged. One tap closes ${esc(shortWeek(week))} (recipe stats, the week review, what it learned), then proposes ${esc(shortWeek(nextW))} around the nights and notes below.${esc(usual)}</p>
+      // "this week … next week"; on Saturday morning "last week … this week"
+      const cw = esc(weekName(week)), nw = esc(weekName(nextW));
+      html += `<div class="card closeout" id="closeout-card"><h2>Close out ${cw} and plan ${nw}</h2>
+        <p class="hint">Every night is logged. One tap closes ${cw} (recipe stats, the week review, what it learned), then proposes ${nw} around the nights and notes below.${esc(usual)}</p>
         ${planInputsHtml(nextW)}
-        <button class="primary" id="btn-close-plan" ${runActive() ? 'disabled' : ''}>Close out and plan next week${ico('arrow')}</button>
+        <button class="primary" id="btn-close-plan" ${runActive() ? 'disabled' : ''}>Close out and plan ${nw}${ico('arrow')}</button>
         <button class="ghost wide" id="btn-review" ${runActive() ? 'disabled' : ''}>Close out only</button></div>`;
     } else {
-      html += `<div class="card closeout" id="closeout-card"><h2>Close out ${esc(shortWeek(week))}</h2>
+      html += `<div class="card closeout" id="closeout-card"><h2>Close out ${esc(weekName(week))}</h2>
         <p class="hint">Every night is logged. Closing updates recipe stats, writes the week review, and feeds what it learned into the next plan.</p>
         <button class="primary" id="btn-review" ${runActive() ? 'disabled' : ''}>Close out the week</button></div>`;
     }
@@ -440,16 +497,17 @@ function renderWeek() {
   if (btnCP) btnCP.onclick = closeAndPlan;
   wirePlanInputs(v);
   wireServings(v, week, plan.meals); // the rescale chips folded into the day cards (weekServHtml)
-  v.querySelectorAll('details.wkserv').forEach((d) => d.addEventListener('toggle', () => {
+  v.querySelectorAll('details.wkserv[data-wkserv]').forEach((d) => d.addEventListener('toggle', () => {
     if (d.open) wkServOpen.add(d.dataset.wkserv); else wkServOpen.delete(d.dataset.wkserv);
   }));
+  wireMove(v, week, plan.meals); // the Move chips folded into the day cards (weekMoveHtml)
   const hist = $('hist');
   if (hist) hist.addEventListener('toggle', () => { if (hist.open) void loadHistory(); }, { once: true });
   wireCommon(v);
 }
 
 async function closeOutWeek() {
-  if (!confirm(`Close out ${state.cooking.week}? This updates recipe stats and preferences.`)) return;
+  if (!confirm(`Close out ${weekName(state.cooking.week, 'range')}? This updates recipe stats and preferences.`)) return;
   await expectOk(await jpost('/api/runs/review', { week: state.cooking.week }), 'Could not start the close-out.');
 }
 
@@ -459,7 +517,7 @@ async function closeAndPlan() {
   const week = state.cooking.week;
   const nextWeek = state.aheadWeekId;
   const d = planDraftFor(nextWeek);
-  if (!confirm(`Close out ${week}, then propose ${nextWeek}? Closing updates recipe stats and preferences.`)) return;
+  if (!confirm(`Close out ${weekName(week, 'range')}, then propose ${weekName(nextWeek, 'range')}? Closing updates recipe stats and preferences.`)) return;
   const b = $('btn-close-plan');
   if (b) b.disabled = true;
   const j = await expectOk(await jpost('/api/runs/close-and-plan', { week, nextWeek, note: d.note, cookNights: d.nights }),
@@ -484,13 +542,19 @@ async function loadHistory() {
   const r = await fetch('/api/plans');
   const j = await expectOk(r, 'Could not load past weeks.');
   if (!j) return;
+  // The plan file's own title ("Week of October 10–16, 2026 (2026-W42)") minus its id.
+  const dropId = (t) => String(t ?? '').replace(/\s*\(\d{4}-W\d{2}\)\s*$/, '');
   list.innerHTML = j.plans.map((p) =>
-    `<button class="ghost" data-plan="${esc(p.file)}">${esc(p.week)} · ${esc(p.status)}</button>`).join('');
+    `<button class="ghost" data-plan="${esc(p.file)}">${esc(dropId(p.title) || weekName(p.week, 'range'))} · ${esc(p.status)}</button>`).join('');
   list.querySelectorAll('[data-plan]').forEach((b) => {
     b.onclick = async () => {
       const rr = await fetch(`/api/plans/entry?f=${encodeURIComponent(b.dataset.plan)}`);
       const jj = await expectOk(rr, 'Could not load that week.');
-      if (jj) $('hist-body').innerHTML = jj.html;
+      if (!jj) return;
+      const body = $('hist-body');
+      body.innerHTML = jj.html;
+      const h1 = body.querySelector('h1');
+      if (h1) h1.textContent = dropId(h1.textContent);
     };
   });
 }

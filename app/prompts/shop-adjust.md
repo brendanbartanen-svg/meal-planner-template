@@ -11,3 +11,4 @@ Apply the request to the Grocery list section of `plans/{{WEEK}}.md`:
 - If the request is to scale a meal (more or fewer servings, a bigger fillet, "double the salmon", "make extra for lunches"), do not hand-scale it: leave that meal's list lines, its recipe file and its Servings cell alone. Apply any other part of the request, and say in the final message that scaling is not done here: the servings control on that meal in the Next tab rescales the meal and its grocery lines properly.
 
 Commit and push. Final message: one or two lines — what was added/removed and where.
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

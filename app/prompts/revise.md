@@ -17,3 +17,4 @@ Apply it to `plans/{{WEEK}}.md`:
 7. If the plan is already `**Status:** locked`, this is a post-lock change request: apply it, keep status `locked`, and update the Prep timeline and Grocery list sections so they stay consistent with the new meals (note at the bottom of the grocery list what changed, so a list already shopped against stays auditable).
 
 Do not create recipe files for new proposals (that happens at lock). Commit and push. Final message: what changed and why, in a few bullets.
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

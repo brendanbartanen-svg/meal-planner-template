@@ -1,5 +1,6 @@
 ---
 name: Sheet-Pan Coconut Fish & Tomato Bake with Jasmine Rice
+description: "Fish fillets roasted with blistered cherry tomatoes in a gingery coconut-lime marinade that becomes the sauce, spooned over jasmine rice."
 cuisine: west-african
 protein: white-fish
 method: [sheet-pan, oven, broiler]

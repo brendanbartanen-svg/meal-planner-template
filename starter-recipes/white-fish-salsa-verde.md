@@ -1,5 +1,6 @@
 ---
 name: Pan-Roasted White Fish with Chili Salsa Verde, Crispy Smashed Potatoes & Charred Broccoli
+description: "Golden pan-roasted cod or halibut under a punchy parsley, caper and Calabrian chili salsa verde, with crispy smashed potatoes and charred broccoli."
 cuisine: italian
 protein: white-fish
 method: [stovetop, skillet, oven]

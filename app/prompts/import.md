@@ -9,7 +9,9 @@ The source, as the app reduced it before this run (no model has touched it):
 3. Write `recipes/<slug>.md`, with a short kebab-case slug from the dish name (2–5 words). **Never overwrite an existing file:** if `recipes/<slug>.md` exists, use `<slug>-2.md` (then `-3`, …) and say so in your final message. Do not touch `plans/` or any other recipe file. The file, in this order:
 
    **Frontmatter** (YAML between `---` lines), keys in this order:
-   - `name` (title case; keep the original's name unless it is unclear), `cuisine` (lowercase; the dish's flavor tradition, not the site's category label, which is often just "American"), `protein` (lowercase lane: `chicken-thigh`, `chicken-breast`, `salmon`, `white-fish`, `shrimp`, `lentils`, `chickpeas`, `tofu`, `paneer`, `beef`, …), `method` (a YAML list, e.g. `[oven, stovetop]`).
+   - `name` (title case; keep the original's name unless it is unclear).
+   - `description`: one double-quoted sentence, at most 160 characters, saying what the dish is and how it eats (main component, key flavors, the side), e.g. `description: "Seared chicken thighs lacquered in a sweet-hot gochujang-honey glaze, with cold sesame smashed cucumbers and jasmine rice."` The dish only: no source or site name, no people or store names, no times or nutrition, no logistics, no em dashes, no double quotes inside it. The Week tab shows it on the day card.
+   - `cuisine` (lowercase; the dish's flavor tradition, not the site's category label, which is often just "American"), `protein` (lowercase lane: `chicken-thigh`, `chicken-breast`, `salmon`, `white-fish`, `shrimp`, `lentils`, `chickpeas`, `tofu`, `paneer`, `beef`, …), `method` (a YAML list, e.g. `[oven, stovetop]`).
    - `active_time_min`: honest hands-on minutes for ONE cook doing everything (Prep included), rounded up to 5. Published times understate this; do not copy theirs.
    - `total_time_min`: start to plate including passive time, rounded up to 5.
    - `prep_min`: minutes of mise en place (the Prep section), rounded up to 5.

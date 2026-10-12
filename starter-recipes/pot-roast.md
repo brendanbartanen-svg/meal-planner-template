@@ -1,5 +1,6 @@
 ---
 name: Dutch-Oven Pot Roast with Potatoes & Carrots
+description: "Chuck roast braised in the oven until it shreds, with carrots, Yukon gold potatoes and onions in a savory thyme and tomato jus."
 cuisine: american
 protein: beef-chuck
 method: [dutch-oven, braise]

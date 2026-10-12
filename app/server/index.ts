@@ -24,6 +24,7 @@
 //   runs.ts    Claude Agent SDK runs + auto-fold
 //   git.ts     pulls, HEAD, SDK version
 //   state.ts   /api/state assembly
+//   move.ts    moving a dinner to another day: pure eligibility (checkMove) + the move prompt's fills
 //   routes.ts  HTTP routes (all but cook)
 //   cook.ts    the sous-chef chat route
 //   ask.ts     the Ask Claude chat (/api/ask; holds the run lock)
@@ -33,6 +34,7 @@
 //   share.ts   POST /share (PWA share target) + /api/shares
 //   ideas.ts, import.ts, recipes-routes.ts  Recipes tab: Ideas (profile/ideas.md) + Add a recipe
 //   trends.ts  pure 12-week trends; trends-routes.ts = GET /api/trends + {{TRENDS}}
+//   weather.ts the kitchen window's Open-Meteo client + cache; weather-routes.ts = GET /api/weather, /api/geocode
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
@@ -53,6 +55,7 @@ import { startAutoFold } from './runs.ts';
 import { registerShareRoutes } from './share.ts';
 import { loadStore } from './store.ts';
 import { registerTrendsRoutes } from './trends-routes.ts';
+import { registerWeatherRoutes } from './weather-routes.ts';
 
 // ---------- public surface (unchanged from the single-file server) ----------
 export { EFFORT_OPTIONS, FOLD_QUIET_OPTIONS, MODEL_OPTIONS } from './store.ts';
@@ -98,6 +101,7 @@ registerPushRoutes(app);  // /api/push/* (push-routes.ts)
 registerShareRoutes(app);  // POST /share (manifest share_target) + /api/shares
 registerRecipesRoutes(app); // /api/ideas, /api/imports, /api/runs/{ideas,import} (recipes-routes.ts)
 registerTrendsRoutes(app); // GET /api/trends (trends-routes.ts)
+registerWeatherRoutes(app); // GET /api/weather + /api/geocode — the Week tab's kitchen window (weather-routes.ts)
 registerPantryRoutes(app); // /api/pantry* — the server's one repo writer: pantry.md via pantry.ts, committed by commit.ts
 
 // ---------- boot ----------

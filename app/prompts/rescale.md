@@ -19,3 +19,4 @@ At the new {{NEW_SERVINGS}} servings:
 Take the new quantities from these scaled lines; do not re-derive them. Source tags still state pack sizes at base scale, so compute pack counts from the scaled amount.
 
 Commit and push. Final message: one or two lines naming the meal, its new servings, and what changed on the list (e.g. "Saturday's salmon is now 8 servings: salmon 3 lb, coconut cream 2 cans, green beans moved to the primary store's 2-lb bag.").
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

@@ -1,5 +1,6 @@
 ---
 name: Jamaican-Style Braised Oxtail with Butter Beans, Rice & Peas and Garlicky Steamed Cabbage
+description: "Oxtail braised with allspice, thyme, ginger and scotch bonnet into a rich gravy with butter beans, served with coconut rice and peas and garlicky cabbage."
 cuisine: jamaican
 protein: beef-oxtail
 method: [dutch-oven, braise]

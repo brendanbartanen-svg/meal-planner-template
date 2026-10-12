@@ -1,5 +1,6 @@
 ---
 name: Sheet-Pan Harissa Salmon, Sweet Potatoes & Broccoli
+description: "Harissa-and-honey glazed salmon roasted alongside spiced sweet potatoes and broccoli, finished with lemon and a cool yogurt drizzle."
 cuisine: mediterranean
 protein: salmon
 method: [sheet-pan, oven]

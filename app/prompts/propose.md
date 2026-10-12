@@ -15,3 +15,4 @@ Follow `.claude/commands/plan-week.md` steps 1–3 and every planning rule in CL
 8. Queued from the Recipes tab (Ideas / imported recipes): {{QUEUED_IDEAS}}
 
 Commit and push when done. Your final message: a 3–5 sentence summary of the proposed week (shape, what's new, what carried over) — the user approves or rejects individual meals in the app afterward.
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

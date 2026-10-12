@@ -1,5 +1,6 @@
 ---
 name: Chicken Rice Bowl
+description: "Soy-honey marinated chicken thighs, griddled and sliced over jasmine rice with roasted broccoli, quick-pickled cucumber and carrot and a spicy yogurt drizzle."
 cuisine: american-asian
 protein: chicken-thigh
 method: [blackstone, stovetop]

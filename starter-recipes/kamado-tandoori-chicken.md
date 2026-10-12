@@ -1,5 +1,6 @@
 ---
 name: Kamado Tandoori-Style Chicken with Charred Vegetables & Raita
+description: "Yogurt-and-spice marinated chicken thighs grilled over charcoal until charred, with grilled zucchini, peppers and onion, cucumber raita and basmati."
 cuisine: indian
 protein: chicken-thigh
 method: [kamado, grill]

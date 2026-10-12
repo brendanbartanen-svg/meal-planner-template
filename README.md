@@ -2,7 +2,7 @@
 
 A weekly meal-planning system where Claude does the work: it proposes the week's dinners, builds the grocery list, and keeps every record (plans, recipes, ratings, pantry) as markdown in this repo. You approve or reject meals, tick off the shopping list, and rate what you cooked — from a small web app on your phone.
 
-- **`app/`** — the web app: an Express server with the Claude Agent SDK inside it, running always-on on a Mac at home. Five tabs: **Week** (what's cooking, log + rate, trends), **Cook** (the recipe at the stove, scaled to tonight's servings, with a sous-chef chat), **Recipes** (your library, ideas, importing recipes from links or photos), **Next** (plan the coming week), **Shop** (live-shared grocery checklist, pantry editor). An **Ask Claude** chat on every tab handles the odd jobs: substitutions, recipe tweaks that stick, pantry and preference changes, questions about past weeks.
+- **`app/`** — the web app: an Express server with the Claude Agent SDK inside it, running always-on on a Mac at home. Five tabs: **Week** (what's cooking, log + rate, move a dinner, trends, and a drawn kitchen window showing your weather), **Cook** (the recipe at the stove, scaled to tonight's servings, with a sous-chef chat), **Recipes** (your library, ideas, importing recipes from links or photos), **Next** (plan the coming week), **Shop** (live-shared grocery checklist, pantry editor). An **Ask Claude** chat on every tab handles the odd jobs: substitutions, recipe tweaks that stick, pantry and preference changes, questions about past weeks.
 - **`profile/`, `plans/`, `recipes/`** — the system of record. Plain markdown, synced through git.
 - **`starter-recipes/`** — thirty-odd tested recipes you can import on day one (optional; see First run).
 - **`.claude/commands/`** — the same four workflows as Claude Code slash commands (`/plan-week`, `/grocery-list`, `/log-meal`, `/review-week`), for when you'd rather work in a Claude Code session.
@@ -85,7 +85,7 @@ To use a different port, set `MEALAPP_PORT` in the LaunchAgent's environment (ad
 
 ## Day-to-day operations
 
-- **Settings** (gear icon in the app): which Claude model each kind of run uses, reasoning effort, whether ratings are written into the record automatically (~5 minutes after you stop tapping) or only when you press "Sync now", push notifications for this phone, and a status block (git state, last pull, pending entries).
+- **Settings** (gear icon in the app): which Claude model each kind of run uses, reasoning effort, whether ratings are written into the record automatically (~5 minutes after you stop tapping) or only when you press "Sync now", the kitchen window's place and °F/°C (weather comes from Open-Meteo, fetched by the Mac, no account), push notifications for this phone, and a status block (git state, last pull, pending entries).
 - **Restart after changing server code:** `app/launchd/install.sh restart`. It refuses while a run is in flight, because a restart would kill the run.
 - **Don't run `npm start` yourself** while the LaunchAgent is installed — the two would fight over the port.
 - **After pulling app changes:** `npm ci` in `app/`, then restart.

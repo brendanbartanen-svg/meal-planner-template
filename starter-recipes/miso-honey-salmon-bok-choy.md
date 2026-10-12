@@ -1,5 +1,6 @@
 ---
 name: Miso-Honey Broiled Salmon with Charred Bok Choy, Chili-Scallion Oil & Jasmine Rice
+description: "Broiled salmon lacquered in a miso-honey glaze, with charred baby bok choy, a spicy chili-scallion oil and jasmine rice."
 cuisine: japanese
 protein: salmon
 method: [broiler, stovetop]

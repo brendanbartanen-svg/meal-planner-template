@@ -1,5 +1,6 @@
 ---
 name: Sheet-Pan Harissa Shrimp with Roasted Greens, Feta & Avocado
+description: "Broiled harissa-garlic shrimp tossed with roasted chard or kale, served over rice with avocado, feta, red onion, cilantro and lime."
 cuisine: north-african
 protein: shrimp
 method: [sheet-pan, oven, broiler]

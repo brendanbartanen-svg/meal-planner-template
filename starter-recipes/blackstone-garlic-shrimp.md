@@ -1,5 +1,6 @@
 ---
 name: Blackstone Chile-Garlic Shrimp with Charred Vegetables & Herby Rice
+description: "Griddled shrimp tossed in chile-garlic butter with charred zucchini, peppers and red onion over lemony, herb-flecked jasmine rice."
 cuisine: mediterranean
 protein: shrimp
 method: [blackstone]

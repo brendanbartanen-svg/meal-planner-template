@@ -1,5 +1,6 @@
 ---
 name: Chana Masala with Crispy Ghee Tadka & Basmati
+description: "Chickpeas simmered in a deeply browned onion and tomato gravy with serrano heat, finished with sizzling garlic-chile ghee and served over basmati."
 cuisine: indian
 protein: chickpeas
 method: [stovetop]

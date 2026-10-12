@@ -2,15 +2,19 @@
 // ahead, the Shop tab's live list, carry cards, and close-out readiness.
 import { configuredPasscode } from './auth.ts';
 import { pullIfStale } from './git.ts';
+import { moveTargets, nightLogged } from './move.ts';
 import type { ParsedPlan, PlanMeal } from './parse.ts';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { recipesDir, repoRoot } from './paths.ts';
-import { readAllPlans } from './repo.ts';
+import { addRecipeMeta, readAllPlans } from './repo.ts';
 import { starterCounts } from './starter.ts';
 import { effectiveServings, foldPublic, runPublic } from './runs.ts';
 import { autoFoldOn, captures, checks, extras, feedback, typicalMs, type RunType, type WeekFeedback } from './store.ts';
-import { addDays, addWeeks, endOfWeek, fmtISO, isSatEra, todayUTC, weekDates, weekDays, weekIdForDate, type DayName } from './weeks.ts';
+import {
+  addDays, addWeeks, endOfWeek, fmtISO, isSatEra, todayUTC, weekDates, weekDays, weekIdForDate, weekInfo,
+  type DayName, type WeekInfo,
+} from './weeks.ts';
 
 // ---------- state assembly ----------
 
@@ -88,6 +92,22 @@ export async function setupStatus(planCount: number): Promise<SetupStatus> {
   };
 }
 
+const WEEK_ID = /^\d{4}-W\d{2}$/;
+
+/**
+ * WeekInfo for every week id the payload references, relative to today's
+ * week: the client names weeks only from this map ("next week", "Oct 17–23"),
+ * never from the id and never by computing dates itself.
+ */
+function weeksFor(ids: Iterable<string | null | undefined>, todayWeekId: string): Record<string, WeekInfo> {
+  const out: Record<string, WeekInfo> = {};
+  for (const id of ids) {
+    if (!id || !WEEK_ID.test(id) || out[id]) continue;
+    out[id] = weekInfo(id, todayWeekId);
+  }
+  return out;
+}
+
 export async function buildState() {
   await pullIfStale();
   const plans = await readAllPlans();
@@ -106,6 +126,8 @@ export async function buildState() {
   const cookingWeek = cooking?.week ?? curId;
   const prevPlan = plans.get(addWeeks(cookingWeek, -1)) ?? null;
   const ahead = plans.get(nextId) ?? null;
+  // the Week tab's day cards say what each dish is (recipe `description`)
+  await addRecipeMeta(cooking, ahead);
 
   const fb = feedback[nextId];
   // servings = what the meal is planned at right now: the Next-tab stepper's
@@ -125,13 +147,20 @@ export async function buildState() {
   // close-out with no way out from the app.
   const cookDates = cooking ? weekDates(cooking.week) : null;
   const missing = cooking
-    ? cooking.meals.filter((m) => !m.flexible).filter((m) => !!cookDates![m.day]).filter((m) => {
-        const l = cooking.log.find((x) => x.day === m.day);
-        if (l && (l.rating !== undefined || (l.cooked && l.cooked !== ''))) return false;
-        const c = captures[cookDates![m.day]!];
-        return !(c && (c.rating !== undefined || c.dish));
-      }).map((m) => m.day)
+    ? cooking.meals.filter((m) => !m.flexible).filter((m) => !!cookDates![m.day])
+        .filter((m) => !nightLogged(cooking.log, m.day, captures[cookDates![m.day]!]))
+        .map((m) => m.day)
     : [];
+
+  // Where each unlogged dinner of the cooking week may move (the Week tab's
+  // Move control). All of the rules are move.ts's; the client only renders this.
+  if (cooking) {
+    const targets = moveTargets({ plan: cooking, today, captures });
+    for (const m of cooking.meals) {
+      const list = m.flexible ? undefined : targets[m.day];
+      if (list?.length) m.moveTo = list;
+    }
+  }
 
   // Shop tab targeting. Normally the ahead week's list. But once weeks start on
   // shopping day, Saturday morning's live list belongs to the week being cooked
@@ -146,17 +175,19 @@ export async function buildState() {
     : (cooking?.hasGrocery && isSatEra(cooking.week)) ? cooking
     : (ahead ?? null);
   const shopWeek = shopPlan?.week ?? nextId;
+  const run = runPublic();
+  const carry = carryEntries(prevPlan, today);
 
   return {
     now: Date.now(),
     today,
     passcodeGate: !!(await configuredPasscode()),
     autoFold: autoFoldOn(),
-    run: runPublic(),
+    run,
     // { pending, nextAt, quietMin, last } — also inside run (runPublic) and in
     // capture / fold-state broadcasts; the client keeps the newest as state.fold
     fold: foldPublic(),
-    typical: Object.fromEntries((['propose', 'revise', 'lock', 'fold', 'shop-adjust', 'review', 'rescale', 'ideas', 'import'] as RunType[])
+    typical: Object.fromEntries((['propose', 'revise', 'lock', 'fold', 'shop-adjust', 'review', 'rescale', 'move', 'ideas', 'import'] as RunType[])
       .map((k) => [k, typicalMs(k)])),
     cooking: cooking ? {
       week: cooking.week, dates: weekDates(cooking.week), fallback,
@@ -175,11 +206,19 @@ export async function buildState() {
       planned: !!shopPlan,                                         // is that week planned at all?
       grocery: shopPlan?.hasGrocery ? shopPlan.grocery : null,     // null → render the empty state
     },
-    carry: carryEntries(prevPlan, today),
+    carry,
     captures,
     checks,
     feedback: fb ?? null,
     extras: extras[nextId] ?? [],
     setup: await setupStatus(plans.size),
+    // How to name each week id above (and in run / lastResult) to a person.
+    weeks: weeksFor([
+      addWeeks(curId, -1), curId, addWeeks(curId, 1), nextId,
+      cookingWeek, addWeeks(cookingWeek, 1), addWeeks(cookingWeek, -1), shopWeek,
+      ...carry.map((c) => c.week),
+      run.week, ...(run.chain?.weeks ?? []),
+      run.lastResult?.week, ...(run.lastResult?.results ?? []).map((r) => r.week),
+    ], curId),
   };
 }

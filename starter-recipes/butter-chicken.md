@@ -1,5 +1,6 @@
 ---
 name: Butter Chicken (Lightened) with Basmati
+description: "Broiler-charred, yogurt-marinated chicken thighs folded into a silky spiced tomato-cream sauce, served over basmati with cilantro."
 cuisine: indian
 protein: chicken-thigh
 method: [stovetop, broiler]

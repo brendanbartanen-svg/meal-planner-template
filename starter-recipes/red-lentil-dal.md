@@ -1,5 +1,6 @@
 ---
 name: Red Lentil Dal with Spinach
+description: "Creamy red lentils simmered with turmeric, ginger and spinach, brightened with lemon and topped with sizzling cumin-garlic ghee, over basmati."
 cuisine: indian
 protein: lentils
 method: [stovetop]

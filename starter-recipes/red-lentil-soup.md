@@ -1,5 +1,6 @@
 ---
 name: Red Lentil Soup (Mercimek Çorbası) with Lemon, Chile Oil & Warm Pita
+description: "Turkish-style red lentil soup with carrot, cumin and tomato, half puréed, finished with lemon, cilantro and a smoky chile oil, with warm pita."
 cuisine: turkish
 protein: lentils
 method: [stovetop]

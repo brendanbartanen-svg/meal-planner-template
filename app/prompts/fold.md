@@ -18,3 +18,4 @@ Per `.claude/commands/log-meal.md` rules, app-mode:
 6. If a capture's date has no planned meal in its file (a flexible night, say), add a row for it in that file's Log table rather than dropping it.
 
 Commit and push. Final message: one line per capture folded ("Wed Jul 30 · Harissa salmon — 5, noted"), "already recorded" where reconcile found nothing new, or "left pending — no plan file yet" for anything the routing table marked missing.
+In your final message, name weeks the way a person does: by their dates ("Oct 17–23", "the week of Oct 17") or as "this week" / "next week", never by the week id (`2026-W43`, `W43`). Ids stay exactly as they are in the files, headings and tables you write.

@@ -1,5 +1,6 @@
 ---
 name: Goulash (Hungarian-Style, Dutch Oven)
+description: "Beef chuck braised until spoon-tender in a sweet and smoked paprika gravy with onions, bell peppers and potatoes, finished with a dollop of sour cream."
 cuisine: hungarian
 protein: beef-chuck
 method: [dutch-oven, braise]

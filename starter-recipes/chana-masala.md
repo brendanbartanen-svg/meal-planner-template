@@ -1,5 +1,6 @@
 ---
 name: Chana Masala with Basmati & Raita
+description: "Chickpeas simmered in a spiced onion, ginger and tomato gravy with lemon and garam masala, served over basmati with cool cucumber raita."
 cuisine: indian
 protein: chickpeas
 method: [stovetop]

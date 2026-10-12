@@ -1,5 +1,6 @@
 ---
 name: Mediterranean White Bean Skillet with Feta & Pita
+description: "White beans simmered in a smoky, garlicky tomato sauce with wilted spinach and soft chunks of feta, scooped up with warm pita."
 cuisine: mediterranean
 protein: white-beans
 method: [stovetop, skillet]

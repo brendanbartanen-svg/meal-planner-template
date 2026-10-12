@@ -32,7 +32,7 @@ import { dailyAt, listSubscriptions, nextOccurrence, pushReady, sendPush, type P
 import { foldPublic, onRunDone, run, type FoldedEntry, type RunDoneInfo } from './runs.ts';
 import { buildState } from './state.ts';
 import { captures, effectiveSettings, type RunType, type WeekFeedback } from './store.ts';
-import { weekDates } from './weeks.ts';
+import { humanizeWeekIds, weekDates, weekIdForDate, weekInfo, weekPhrase } from './weeks.ts';
 
 // ---------- types ----------
 
@@ -55,8 +55,16 @@ export interface RunExtras { ideasCount?: number | null; importName?: string | n
 
 // ---------- text helpers ----------
 
-/** "2026-W43" → "W43". */
-export const weekLabel = (w: string) => w.replace(/^\d{4}-/, '');
+/**
+ * How a title names a week, relative to `today` (ISO date): "next week",
+ * "this week", "last week", else its dates ("Oct 17–23"). Capitalised with cap.
+ */
+export function weekWords(week: string, today: string, cap = false): string {
+  if (!week) return '';
+  const info = weekInfo(week, weekIdForDate(new Date(`${today}T00:00:00Z`)));
+  if (info.rel) return weekPhrase(info, { cap });
+  return info.range;
+}
 
 /** Clip at a word boundary to at most `max` chars, with an ellipsis. */
 export function clipText(s: string, max: number): string {
@@ -136,7 +144,7 @@ const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const TAB_FOR: Record<RunType, string> = {
   propose: '/?tab=next', revise: '/?tab=next', lock: '/?tab=next',
-  review: '/?tab=week', fold: '/?tab=week',
+  review: '/?tab=week', fold: '/?tab=week', move: '/?tab=week',
   'shop-adjust': '/?tab=shop', rescale: '/?tab=shop',
   ideas: '/?tab=recipes', import: '/?tab=recipes', ask: '/',
 };
@@ -174,15 +182,17 @@ export function lockBody(state: NotifyState, week: string): string {
 
 /** Title/body/url for one successful step; null for types that never notify. */
 function stepCopy(info: RunDoneInfo, state: NotifyState, extras: RunExtras): Omit<NotifyPayload, 'tag'> | null {
-  const w = weekLabel(info.week);
-  const line = firstLine(info.summaryMd);
+  const w = weekWords(info.week, state.today);
+  const W = weekWords(info.week, state.today, true);
+  const line = firstLine(humanizeWeekIds(info.summaryMd));
   switch (info.type) {
-    case 'propose': return { title: `${w} proposal ready`, body: proposeBody(state, info.week), url: '/?tab=next' };
-    case 'revise': return { title: `${w} revised`, body: line || 'The updated proposal is on the Next tab', url: '/?tab=next' };
-    case 'lock': return { title: `${w} locked`, body: lockBody(state, info.week), url: '/?tab=shop' };
-    case 'review': return { title: `${w} closed out`, body: line || 'Stats and the week review are in the record', url: '/?tab=week' };
+    case 'propose': return { title: `Proposal ready for ${w}`, body: proposeBody(state, info.week), url: '/?tab=next' };
+    case 'revise': return { title: `${W} revised`, body: line || 'The updated proposal is on the Next tab', url: '/?tab=next' };
+    case 'lock': return { title: `${W} locked`, body: lockBody(state, info.week), url: '/?tab=shop' };
+    case 'review': return { title: `${W} closed out`, body: line || 'Stats and the week review are in the record', url: '/?tab=week' };
     case 'shop-adjust':
     case 'rescale': return { title: `List updated for ${w}`, body: line || 'The new list is on the Shop tab', url: '/?tab=shop' };
+    case 'move': return { title: 'Dinner moved', body: line || 'The plan and its prep are updated on the Week tab', url: '/?tab=week' };
     case 'ideas': {
       const n = extras.ideasCount;
       return { title: 'New ideas ready', body: n ? `${n} dish${n === 1 ? '' : 'es'} to browse` : 'Fresh dishes to browse on the Recipes tab', url: '/?tab=recipes' };
@@ -208,9 +218,9 @@ export function runDonePayload(steps: RunDoneInfo[], state: NotifyState, extras:
     const before = visible.slice(0, -1).filter((s) => s.ok)
       .map((s) => stepCopy(s, state, extras)?.title).filter((t): t is string => !!t);
     const stopped = /\bstopped by user\b/i.test(last.summaryMd);
-    const err = firstLine(last.summaryMd, 140) || 'No details: open the app';
+    const err = firstLine(humanizeWeekIds(last.summaryMd), 140) || 'No details: open the app';
     return {
-      title: `Run ${stopped ? 'stopped' : 'failed'}: ${last.type}${last.week ? ` ${weekLabel(last.week)}` : ''}`,
+      title: `Run ${stopped ? 'stopped' : 'failed'}: ${last.type}${last.week ? `, ${weekWords(last.week, state.today)}` : ''}`,
       body: clipText(before.length ? `${before.join(' · ')} ✓. ${err}` : err, 180),
       url: TAB_FOR[last.type],
       tag,
@@ -221,7 +231,12 @@ export function runDonePayload(steps: RunDoneInfo[], state: NotifyState, extras:
   const fin = copies[copies.length - 1];
   if (!fin) return null;
   const sendAndLock = visible.length === 2 && visible[0]!.type === 'revise' && visible[1]!.type === 'lock' && visible[0]!.week === visible[1]!.week;
-  const title = sendAndLock ? `${weekLabel(last.week)} revised and locked` : copies.map((c) => c.title).join(' · ');
+  // close-and-plan: the two steps' own titles joined run past ~40 chars, so
+  // it reads like the app's result card ("Closed out this week · proposed next week")
+  const closeAndPlan = visible.length === 2 && visible[0]!.type === 'review' && visible[1]!.type === 'propose';
+  const title = sendAndLock ? `${weekWords(last.week, state.today, true)} revised and locked`
+    : closeAndPlan ? `Closed out ${weekWords(visible[0]!.week, state.today)} · proposed ${weekWords(visible[1]!.week, state.today)}`
+    : copies.map((c) => c.title).join(' · ');
   return { title, body: fin.body, url: fin.url, tag };
 }
 

@@ -1,5 +1,6 @@
 ---
 name: Umami-Bomb Shepherd's Pie
+description: "Ground beef and browned mushrooms in a rich gravy deepened with anchovy, tomato paste and Worcestershire, under broiled golden mashed potatoes."
 cuisine: british
 protein: beef
 method: [stovetop, broiler]

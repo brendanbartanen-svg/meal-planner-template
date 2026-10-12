@@ -1,5 +1,6 @@
 ---
 name: Sesame-Seared Fresh Ahi Tuna Bowls with Ginger-Scallion Sauce
+description: "Sesame-crusted ahi tuna seared rare over jasmine rice with quick-pickled cucumbers, sizzling ginger-scallion sauce and sriracha mayo."
 cuisine: asian
 protein: tuna
 method: [stovetop, skillet]

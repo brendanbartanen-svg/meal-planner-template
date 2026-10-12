@@ -52,6 +52,10 @@ try {
 </svg>
 
 <div class="wrap">
+  <!-- The kitchen window (Week tab only): the real sky and weather over the
+       back woods. Drawn by js/05-window.js; the scene inside carries the
+       role="img" + aria-label, the caption under the sill opens Settings. -->
+  <section class="window" id="window" hidden aria-label="Kitchen window"></section>
   <header class="top">
     <button class="gear" id="btn-settings" type="button" aria-label="Settings" aria-haspopup="dialog">
       <svg class="i" aria-hidden="true"><use href="#i-gear"/></svg>
@@ -99,6 +103,7 @@ try {
 <!-- Classic scripts sharing one global scope, in this order (later files may
      use earlier ones at load time; 90-boot.js must stay last). -->
 <script src="/js/00-core.js"></script>
+<script src="/js/05-window.js"></script>
 <script src="/js/10-week.js"></script>
 <script src="/js/15-trends.js"></script>
 <script src="/js/20-next.js"></script>
