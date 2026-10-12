@@ -5,6 +5,11 @@
       "name": "meal-app",
       "url": "http://localhost:4316",
       "port": 4316
+    },
+    {
+      "name": "meal-app-dev",
+      "url": "http://localhost:4317",
+      "port": 4317
     }
   ]
 }

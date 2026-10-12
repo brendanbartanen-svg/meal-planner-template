@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable variant: solid full-bleed background, mark at 100% (outermost
+       pixel ~155 px from centre, inside the 204.8 px = 40% safe-zone radius). -->
+  <rect width="512" height="512" fill="#F4EDE1"/>
+  <g transform="translate(256 256) scale(1.0) translate(-256 -256)">
+    <g fill="#3D5A2F">
+      <path d="M160 212C160 172 200 150 256 150S352 172 352 212Z"/>
+      <rect x="128" y="204" width="256" height="24" rx="12"/>
+      <rect x="102" y="254" width="60" height="26" rx="13"/>
+      <rect x="350" y="254" width="60" height="26" rx="13"/>
+      <path d="M144 242H368V316C368 360 340 384 300 384H212C172 384 144 360 144 316Z"/>
+    </g>
+    <g fill="#A64C2A">
+      <circle cx="256" cy="140" r="18"/>
+      <rect x="144" y="280" width="224" height="24"/>
+    </g>
+  </g>
+</svg>

@@ -4,7 +4,8 @@ description: Close out the week — update stats, surface insights, prep for nex
 
 Close out the current week.
 
-> The app's Week tab has a "Close out the week" button running `app/prompts/review.md` (it folds pending app captures itself). Use this command as the desktop fallback.
+> Since 2026-08-01 the app's Week tab has a "Close out the week" button running `app/prompts/review.md` (it folds pending app captures itself). Use this command as the desktop fallback.
+> When next week isn't planned yet, the app's close-out card offers **Close out and plan next week**: one chained run (review, then propose) with cook nights + constraints collected first; the Next tab's **Send and lock** chains revise → lock the same way. On desktop, run `/plan-week` after this.
 
 1. Read the week's plan file. If the Log table has gaps, ask the user to fill them before closing — conversational reporting or `/log-meal` both work.
 2. Update each cooked recipe's frontmatter in `recipes/`: recompute `rating` (running average), increment `times_cooked`, set `last_cooked`.

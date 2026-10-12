@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 77 352 352" width="96" height="96">
+  <!-- Android status-bar badge: white silhouette on transparent (only alpha is
+       used). Same pot as icon.svg, cropped tight; the band is a cut-out. -->
+  <g fill="#FFFFFF">
+    <circle cx="256" cy="140" r="18"/>
+    <path d="M160 212C160 172 200 150 256 150S352 172 352 212Z"/>
+    <rect x="128" y="204" width="256" height="24" rx="12"/>
+    <rect x="102" y="254" width="60" height="26" rx="13"/>
+    <rect x="350" y="254" width="60" height="26" rx="13"/>
+    <rect x="144" y="242" width="224" height="38"/>
+    <path d="M144 304H368V316C368 360 340 384 300 384H212C172 384 144 360 144 316Z"/>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 # Preferences
 
-> **Blank template.** Replace every `_fill in_` before the first plan — either edit this file by hand, or open a Claude Code session in this repo and ask Claude to interview you and fill it in. Keep the section headings and the bold field labels: Claude reads this file before every plan, grocery list, and sous-chef answer. Delete this note when the file is complete.
+> **Blank template.** Replace every `_fill in_` before the first plan — either edit this file by hand, or let Claude interview you: the app's Get started card (Week tab) opens Ask Claude with the request typed in, or ask in a Claude Code session in this repo. Keep the section headings and the bold field labels: Claude reads this file before every plan, grocery list, and sous-chef answer. Delete this note when the file is complete.
 
 ## Household
 - _fill in_ — number of people, whether tastes are shared, and how many servings each dinner is cooked at (e.g. "2 people, shared tastes; every dinner cooked at 4 servings = 2 dinner + 2 next-day lunch")
@@ -45,8 +45,8 @@
 - Leftovers: **_fill in_** (love them / tolerate them / avoid)
 
 ## Shopping
-- Primary store: **_fill in_** — how often you go. Its name becomes the first `### ` heading of every grocery list.
-- Secondary store: **_fill in_** — used only for what the primary store doesn't carry or sells in impractical bulk. (Write "none" for a single-store household.)
+- Primary store: **_fill in_** — how often you go. Its name becomes the first `### ` heading of every grocery list; recipe ingredients bought there are tagged `[1]`.
+- Secondary store: **_fill in_** — used only for what the primary store doesn't carry or sells in impractical bulk; its ingredients are tagged `[2]`. (Write "none" for a single-store household.)
 - Budget: **_fill in_** (a weekly target, or "no target")
 - Freezer: **_fill in_** (how much space; whether you're willing to break down and freeze bulk packs)
 - Standing staples: _fill in_ (bought every trip regardless of the plan, or "none declared — learn them from shopping patterns over time")
