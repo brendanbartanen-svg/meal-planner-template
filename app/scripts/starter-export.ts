@@ -19,15 +19,21 @@
 //   - source tags and store names genericized: [C …] → [1 …], [K …] → [2 …],
 //     Costco → "the warehouse club", Kroger → "the supermarket", and the
 //     legend comment → the template's `[1] primary store, [2] secondary store`.
+// Each exported recipe's picture (recipes/images/<slug>.<jpg|jpeg|png|webp>,
+// the RECIPE_IMAGE pattern from server/repo.ts) is copied byte-for-byte to
+// <out dir>/images/; importing a starter recipe copies it along
+// (server/starter.ts).
 // Usage (from app/):
-//   npx tsx scripts/starter-export.ts <out dir>               export recipes/*.md + a README
+//   npx tsx scripts/starter-export.ts <out dir>               export recipes/*.md + images/ + a README
 //   npx tsx scripts/starter-export.ts --genericize <in> <out>  tags/stores only (recipes/README.md for the template)
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RECIPE_IMAGE } from '../server/repo.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const recipesDir = path.join(repoRoot, 'recipes');
+const imagesDir = path.join(recipesDir, 'images');
 
 export const LEAK_RE = /Costco|Kroger|Brendan|wife|Esme/;
 const PERSON_RE = /Brendan|\bwife\b|Esme/;
@@ -174,6 +180,10 @@ commits them; anything already in \`recipes/\` is skipped, never overwritten. Wi
     npm run starter -- --all     # import everything not yet in recipes/
     npm run starter -- goulash red-lentil-dal
 
+**Pictures.** \`images/\` holds each recipe's picture (\`images/<slug>.jpg\`, the recipe's file name without
+\`.md\`). Importing a recipe also copies its picture to \`recipes/images/\`, where the app shows it; an
+existing picture there is left alone.
+
 Imported recipes are yours: edit or delete them like any other recipe.
 
 **Delete this folder when you are done with it.** The app never reads it for planning (only \`recipes/\`
@@ -201,8 +211,20 @@ async function main() {
     console.log(`  ${f.padEnd(44)} notes kept ${String(report.notesKept).padStart(2)}, dropped ${String(report.notesDropped).padStart(2)}${report.removed.length ? ` · removed ${report.removed.join(', ')}` : ''}`);
   }
   await fs.writeFile(path.join(outDir, 'README.md'), STARTER_README);
-  console.log(`\nexported ${files.length} recipes + README.md → ${outDir}`);
-  // final leak check over everything written
+  // each exported recipe's picture, byte-for-byte (first match per slug, same order as repo.ts recipeImages)
+  const slugs = new Set(files.map((f) => f.replace(/\.md$/, '')));
+  const copied = new Set<string>();
+  let imageFiles: string[] = [];
+  try { imageFiles = (await fs.readdir(imagesDir)).sort(); } catch { /* no images folder: none to copy */ }
+  for (const img of imageFiles) {
+    const slug = RECIPE_IMAGE.exec(img)?.[1];
+    if (!slug || !slugs.has(slug) || copied.has(slug)) continue;
+    if (!copied.size) await fs.mkdir(path.join(outDir, 'images'), { recursive: true });
+    await fs.copyFile(path.join(imagesDir, img), path.join(outDir, 'images', img));
+    copied.add(slug);
+  }
+  console.log(`\nexported ${files.length} recipes + ${copied.size} image${copied.size === 1 ? '' : 's'} + README.md → ${outDir}`);
+  // final leak check over everything written (text only; images/ is binary and skipped)
   const leaks: string[] = [];
   for (const f of [...files, 'README.md']) {
     const lines = (await fs.readFile(path.join(outDir, f), 'utf8')).split('\n');

@@ -10,12 +10,18 @@
 // refused (RunBusyError) while a run, chain or Ask Claude holds the run lock,
 // serialized with the repo lock, MEALAPP_NO_GIT honored (files stay
 // uncommitted). The planner never reads starter-recipes/; only this module does.
+//
+// Pictures ride along: starter-recipes/images/<slug>.<ext> (RECIPE_IMAGE, as in
+// repo.ts) is copied to recipes/images/ with the recipe, unless recipes/images/
+// already has a picture for that slug (left alone, not an error), and is
+// committed and rolled back together with it.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { broadcast } from './bus.ts';
 import { commitRepoFiles, withRepoLock, type CommitResult } from './commit.ts';
 import { parseRecipe } from './parse.ts';
-import { recipesDir, starterDir } from './paths.ts';
+import { recipeImagesDir, recipesDir, starterDir } from './paths.ts';
+import { RECIPE_IMAGE } from './repo.ts';
 import { busyLabel, run, RunBusyError } from './runs.ts';
 
 export const STARTER_FILE = /^[a-z0-9-]+\.md$/;
@@ -30,6 +36,8 @@ export interface StarterRecipe {
   total_time_min?: number;
   /** A file of the same name already exists in recipes/. */
   inLibrary: boolean;
+  /** starter-recipes/images/ has a picture for it (copied along on import). */
+  image: boolean;
 }
 
 export interface StarterList { available: boolean; recipes: StarterRecipe[] }
@@ -49,6 +57,22 @@ async function listMd(dir: string): Promise<string[] | null> {
   }
 }
 
+const starterImagesDir = path.join(starterDir, 'images');
+
+/** slug → image file name (first match per slug, sorted, as repo.ts recipeImages); missing folder → empty. */
+async function imagesBySlug(dir: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  let files: string[];
+  try { files = (await fs.readdir(dir)).sort(); } catch { return out; }
+  for (const f of files) {
+    const slug = RECIPE_IMAGE.exec(f)?.[1];
+    if (slug && !out.has(slug)) out.set(slug, f);
+  }
+  return out;
+}
+
+const slugOf = (file: string) => file.replace(/\.md$/, '');
+
 /** `method: [a, b]` (inline YAML array) or a bare scalar, from the frontmatter. */
 function methodOf(raw: string): string[] {
   if (!raw.startsWith('---')) return [];
@@ -65,6 +89,7 @@ export async function listStarter(): Promise<StarterList> {
   const files = await listMd(starterDir);
   if (files === null) return { available: false, recipes: [] };
   const have = new Set((await listMd(recipesDir)) ?? []);
+  const images = await imagesBySlug(starterImagesDir);
   const recipes: StarterRecipe[] = [];
   for (const file of files) {
     let raw: string;
@@ -79,6 +104,7 @@ export async function listStarter(): Promise<StarterList> {
       ...(meta.active_time_min !== undefined ? { active_time_min: meta.active_time_min } : {}),
       ...(meta.total_time_min !== undefined ? { total_time_min: meta.total_time_min } : {}),
       inLibrary: have.has(file),
+      image: images.has(slugOf(file)),
     });
   }
   return { available: true, recipes };
@@ -92,7 +118,13 @@ export async function starterCounts(): Promise<{ available: boolean; remaining: 
   return { available: true, remaining: files.filter((f) => !have.has(f)).length };
 }
 
-export interface StarterImportResult { imported: string[]; skipped: string[]; git: CommitResult | null }
+export interface StarterImportResult {
+  imported: string[];
+  skipped: string[];
+  /** recipes/images/ files copied along with the imported recipes. */
+  images: string[];
+  git: CommitResult | null;
+}
 
 /**
  * Copy the named starter recipes into recipes/ and commit them. Unknown or
@@ -116,6 +148,13 @@ export async function importStarter(files: string[], by?: string, opts: { backgr
     if (run) throw new RunBusyError(busyLabel(run));
     const imported: string[] = [];
     const skipped: string[] = [];
+    const images: string[] = []; // image file names copied into recipes/images/
+    const starterImages = await imagesBySlug(starterImagesDir);
+    const haveImages = await imagesBySlug(recipeImagesDir);
+    const rollback = () => Promise.all([
+      ...imported.map((g) => fs.unlink(path.join(recipesDir, g)).catch(() => {})),
+      ...images.map((g) => fs.unlink(path.join(recipeImagesDir, g)).catch(() => {})),
+    ]);
     await fs.mkdir(recipesDir, { recursive: true });
     for (const f of names) {
       try {
@@ -124,22 +163,37 @@ export async function importStarter(files: string[], by?: string, opts: { backgr
         imported.push(f);
       } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') { skipped.push(f); continue; }
-        await Promise.all(imported.map((g) => fs.unlink(path.join(recipesDir, g)).catch(() => {})));
+        await rollback();
+        throw err;
+      }
+      // its picture, unless recipes/images/ already has one for this slug (left alone)
+      const slug = slugOf(f);
+      const img = starterImages.get(slug);
+      if (!img || haveImages.has(slug)) continue;
+      try {
+        await fs.mkdir(recipeImagesDir, { recursive: true });
+        await fs.copyFile(path.join(starterImagesDir, img), path.join(recipeImagesDir, img), fs.constants.COPYFILE_EXCL);
+        images.push(img);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') continue;
+        await rollback();
         throw err;
       }
     }
-    if (!imported.length) return { imported, skipped, git: null };
+    if (!imported.length) return { imported, skipped, images, git: null };
     const n = imported.length;
     let git: CommitResult;
     try {
-      git = await commitRepoFiles(imported.map((f) => `recipes/${f}`), `Recipes: import ${n} starter recipe${n === 1 ? '' : 's'}`,
+      git = await commitRepoFiles(
+        [...imported.map((f) => `recipes/${f}`), ...images.map((g) => `recipes/images/${g}`)],
+        `Recipes: import ${n} starter recipe${n === 1 ? '' : 's'}`,
         { by, background: opts.background ?? true, lockHeld: true });
     } catch (err) {
       // a failed commit (or a run that started meanwhile) takes the copies back out
-      await Promise.all(imported.map((g) => fs.unlink(path.join(recipesDir, g)).catch(() => {})));
+      await rollback();
       throw err;
     }
-    return { imported, skipped, git };
+    return { imported, skipped, images, git };
   });
   if (out.imported.length) broadcast({ type: 'state-updated' }); // Recipes tab + Get started card refetch
   return out;

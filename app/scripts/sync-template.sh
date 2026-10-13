@@ -3,8 +3,10 @@
 #   app/scripts/sync-template.sh <template dir>      (or, from app/: npm run sync-template -- <template dir>)
 # Copies the shared files verbatim (app/ minus node_modules, data, launchd; the
 # desktop commands; launch.json; plans/TEMPLATE.md; .gitignore), copies
-# recipes/README.md with the source-tag legend genericized, exports the
-# starter library into <template>/starter-recipes/, then prints the manual
+# recipes/README.md with the source-tag legend genericized and
+# recipes/images/README.md (through the same genericizer, for its leak check),
+# exports the starter library into <template>/starter-recipes/ (recipes plus
+# their pictures in starter-recipes/images/), then prints the manual
 # checklist. It never commits anything in either repo.
 set -euo pipefail
 
@@ -47,18 +49,22 @@ sed -i '' -e "s/Brendan's/the cook's/g" -e 's/Brendan/the cook/g' "$tpl"/app/scr
 echo "  fixtures: personal names neutralized"
 
 # 2. desktop commands, the preview config, the plan template, .gitignore
-mkdir -p "$tpl/.claude/commands" "$tpl/plans" "$tpl/recipes"
+mkdir -p "$tpl/.claude/commands" "$tpl/plans" "$tpl/recipes" "$tpl/recipes/images"
 rsync -a --delete --exclude '.DS_Store' "$repo/.claude/commands/" "$tpl/.claude/commands/"
 cp "$repo/.claude/launch.json" "$tpl/.claude/launch.json"
 cp "$repo/plans/TEMPLATE.md" "$tpl/plans/TEMPLATE.md"
 cp "$repo/.gitignore" "$tpl/.gitignore"
 echo "  .claude/commands/, .claude/launch.json, plans/TEMPLATE.md, .gitignore copied"
 
-# 3. recipes/README.md with the template's tag legend ([1]/[2]/[P]); same rules as the exporter
+# 3. recipes/README.md with the template's tag legend ([1]/[2]/[P]); same rules as the exporter.
+#    recipes/images/README.md (how pictures are named and made) goes through the same
+#    genericizer: a no-op on it today, but its leak check still runs. The template ships
+#    no pictures in recipes/images/; they arrive with imported starter recipes.
 cd "$repo/app"
 npx tsx scripts/starter-export.ts --genericize "$repo/recipes/README.md" "$tpl/recipes/README.md" | sed 's/^/  /'
+npx tsx scripts/starter-export.ts --genericize "$repo/recipes/images/README.md" "$tpl/recipes/images/README.md" | sed 's/^/  /'
 
-# 4. the starter library, regenerated from scratch
+# 4. the starter library (recipes + images/), regenerated from scratch
 rm -rf "$tpl/starter-recipes"
 npx tsx scripts/starter-export.ts "$tpl/starter-recipes" | sed 's/^/  /'
 

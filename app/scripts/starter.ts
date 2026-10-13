@@ -1,6 +1,7 @@
 // CLI fallback for the Recipes tab's Starter library card: copy recipes from
 // starter-recipes/ into recipes/ and commit them (same module as the app,
-// server/starter.ts; MEALAPP_NO_GIT=1 leaves them uncommitted).
+// server/starter.ts, so each recipe's picture in starter-recipes/images/ comes
+// along to recipes/images/; MEALAPP_NO_GIT=1 leaves them uncommitted).
 //   npm run starter                 list what's there
 //   npm run starter -- --all        import everything not yet in recipes/
 //   npm run starter -- a.md b       import these (".md" optional)
@@ -34,6 +35,7 @@ if (!files.length) {
 try {
   const r = await importStarter(files, undefined, { background: false });
   console.log(`Imported ${r.imported.length}: ${r.imported.join(', ') || '(none)'}`);
+  if (r.images.length) console.log(`Pictures copied to recipes/images/: ${r.images.join(', ')}`);
   if (r.skipped.length) console.log(`Skipped (already in recipes/): ${r.skipped.join(', ')}`);
   const g = r.git;
   if (g) {

@@ -261,7 +261,7 @@ function renderNext() {
       html += `<div class="day prop" data-day="${m.day}">
         <div class="prop-top"><span class="dow">${esc(SERV_DAY_NAMES[m.day] ?? m.day)}${date ? ` ${dpart(date).d}` : ''}</span>${badge}</div>
         <div class="daybody">
-          <h3>${keepHyphens(head)}</h3>${side ? `<p class="with">${esc(side)}</p>` : ''}
+          ${withThumb(m.image, `<h3>${keepHyphens(head)}</h3>${side ? `<p class="with">${esc(side)}</p>` : ''}`)}
           ${meta ? `<div class="meta">${m.timeMin ? ico('clock') : ''}${meta}</div>` : ''}
           ${p.whys[m.day] ? `<p class="why">${esc(p.whys[m.day])}</p>` : ''}
           ${servingsHtml(m, aheadServings(m), 'plan')}
@@ -319,7 +319,7 @@ function renderNext() {
       <ul class="locked">` +
       nights.map((m) => `<li class="lockedrow">
         <span class="lockedday">${m.day}</span>
-        <div class="lockedmeal"><span>${m.recipeFile ? `<a href="#" data-recipe="${esc(m.recipeFile)}">${esc(m.dish)}</a>` : esc(m.dish)}${m.isNew ? ' <span class="tagnew">New</span>' : ''}</span>
+        <div class="lockedmeal">${withThumb(m.image, `<span class="lockedname">${m.recipeFile ? `<a href="#" data-recipe="${esc(m.recipeFile)}">${esc(m.dish)}</a>` : esc(m.dish)}${m.isNew ? ' <span class="tagnew">New</span>' : ''}</span>`)}
         ${p.status === 'locked' ? servingsHtml(m, fileServings(m), 'locked') : ''}</div></li>`).join('') +
       `</ul></div>
       <div class="card"><h2>Change something?</h2>

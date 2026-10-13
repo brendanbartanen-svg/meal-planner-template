@@ -39,6 +39,8 @@ export interface PlanMeal {
    * (repo.ts addDescriptions) for the Week tab's day cards.
    */
   description?: string;
+  /** URL of the recipe's picture (`/recipe-images/<slug>.jpg`), joined like `description`; absent when it has none. */
+  image?: string;
   isNew: boolean;
   favRating?: number;
   /**
@@ -327,6 +329,8 @@ export interface RecipeMeta {
   name: string;
   /** One sentence (≤ 160 chars) on what the dish is; `description: "…"` right after `name:`. */
   description?: string;
+  /** URL of `recipes/images/<slug>.<ext>` when one exists; set by repo.ts, never by the parser. */
+  image?: string;
   cuisine?: string;
   protein?: string;
   active_time_min?: number;

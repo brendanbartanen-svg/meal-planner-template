@@ -282,6 +282,15 @@ console.log('\nrecipe description:');
   // the Week tab renders the description, never the planner's rationale
   const weekJs = await fs.readFile(path.join(repoRoot, 'app/public/js/10-week.js'), 'utf8');
   check('Week tab: day cards read m.description, not plan.whys', weekJs.includes('m.description') && !/\bwhys\[/.test(weekJs));
+
+  // recipe pictures: recipes/images/<slug>.jpg, discovered by filename (repo.ts recipeImages)
+  console.log('\nrecipe images:');
+  const { recipeImages } = await import('../server/repo.ts');
+  const images = await recipeImages();
+  if (await pathExists(path.join(repoRoot, 'recipes/images/butter-chicken.jpg'))) {
+    check('recipeImages: butter-chicken → /recipe-images/butter-chicken.jpg', images.get('butter-chicken') === '/recipe-images/butter-chicken.jpg', images.get('butter-chicken'));
+  }
+  check('recipeImages: the folder README is not an image', !images.has('README') && ![...images.values()].some((u) => /readme/i.test(u)), [...images.keys()]);
 }
 
 // ---- pantry editor core (server/pantry.ts) ----

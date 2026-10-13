@@ -45,7 +45,7 @@ import { setBroadcaster } from './bus.ts';
 import { registerCookRoutes } from './cook.ts';
 import { bootPull } from './git.ts';
 import { startNotify } from './notify.ts';
-import { appDir, dataDir, repoRoot } from './paths.ts';
+import { appDir, dataDir, recipeImagesDir, repoRoot } from './paths.ts';
 import { registerPantryRoutes } from './pantry-routes.ts';
 import { initPush } from './push.ts';
 import { registerPushRoutes } from './push-routes.ts';
@@ -92,6 +92,18 @@ app.use(express.json());
 // never run yesterday's app.js against today's state shape.
 app.use(express.static(path.join(appDir, 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
+// Recipe pictures, recipes/images/<slug>.jpg (recipes/images/README.md): image
+// files only (the folder's README is a 404), no index or listing, an hour of
+// cache then ETag revalidation — they change rarely.
+app.use('/recipe-images', (req, res, next) => {
+  if (!/^\/[a-z0-9-]+\.(jpe?g|png|webp)$/i.test(req.path)) return res.status(404).end();
+  next();
+}, express.static(recipeImagesDir, {
+  index: false,
+  redirect: false,
+  fallthrough: false,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=3600'),
 }));
 
 registerRoutes(app);

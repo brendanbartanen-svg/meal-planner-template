@@ -13,6 +13,10 @@ commits them; anything already in `recipes/` is skipped, never overwritten. With
     npm run starter -- --all     # import everything not yet in recipes/
     npm run starter -- goulash red-lentil-dal
 
+**Pictures.** `images/` holds each recipe's picture (`images/<slug>.jpg`, the recipe's file name without
+`.md`). Importing a recipe also copies its picture to `recipes/images/`, where the app shows it; an
+existing picture there is left alone.
+
 Imported recipes are yours: edit or delete them like any other recipe.
 
 **Delete this folder when you are done with it.** The app never reads it for planning (only `recipes/`

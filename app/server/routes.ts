@@ -11,7 +11,7 @@ import { checkMove } from './move.ts';
 import { CHECK_KEY, parseRecipe, SAFE_FILE } from './parse.ts';
 import { plansDir, recipesDir } from './paths.ts';
 import { COOK_SERVINGS_MAX, COOK_SERVINGS_MIN, cookEntry, parseServings } from './cook.ts';
-import { readAllPlans, readRecipes } from './repo.ts';
+import { readAllPlans, readRecipes, recipeImages, recipeSlug } from './repo.ts';
 import { factorFor, formatQty, headline } from './scale.ts';
 import type { MealDecision } from './store.ts';
 import { busyLabel, foldPublic, lastCaptureAt, markCapture, NO_GIT, run, runPublic, startChain, startRun, withCookNights } from './runs.ts';
@@ -129,7 +129,12 @@ export function registerRoutes(app: express.Express) {
     let raw: string;
     try { raw = await fs.readFile(path.join(recipesDir, f), 'utf8'); }
     catch { return res.status(404).json({ error: 'not found' }); }
-    try { res.json(cookEntry(raw, f, servings)); }
+    try {
+      const out = cookEntry(raw, f, servings);
+      const image = (await recipeImages()).get(recipeSlug(f));
+      if (image) out.meta = { ...out.meta, image };
+      res.json(out);
+    }
     catch (err) { res.status(500).json({ error: `Could not render ${f}: ${err instanceof Error ? err.message : String(err)}` }); }
   });
 

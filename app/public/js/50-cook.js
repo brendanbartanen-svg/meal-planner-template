@@ -267,9 +267,12 @@ function renderCook() {
     : data?.meta?.times_cooked === 0 ? '<span class="tagnew">New</span>' : ''}</span>`;
   const [head, side] = dishParts(name);
   const title = `<h2>${keepHyphens(head)}</h2>${side ? `<p class="with">${esc(side)}</p>` : ''}`;
+  // the recipe's picture: the entry's meta, else the library's or the week's while it loads
+  const heroImg = dishImg(data?.meta?.image ?? libMeta?.image ?? wk?.image, 'hero');
 
   if (!data) {
     html += `<div class="card cookhead">
+      ${heroImg}
       <div class="cookhead-top">${chips}${wakePillHtml()}</div>
       ${title}
       ${ent?.missing ? NOT_YET : '<p class="cookloading">loading…</p>'}
@@ -294,6 +297,7 @@ function renderCook() {
     n.carbs_g ? `${n.carbs_g} g carbs` : null, n.fat_g ? `${n.fat_g} g fat` : null, n.fiber_g ? `${n.fiber_g} g fiber` : null,
   ].filter(Boolean).map((x) => x.replace(/ /g, '\u00a0')).join(' · ');
   html += `<div class="card cookhead">
+    ${heroImg}
     <div class="cookhead-top">${chips}${wakePillHtml()}</div>
     ${title}
     ${metaBits ? `<div class="cookmeta">${esc(metaBits)}</div>` : ''}

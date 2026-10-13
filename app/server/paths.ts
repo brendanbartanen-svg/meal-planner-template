@@ -9,6 +9,8 @@ export const appDir = path.resolve(here, '..');
 export const repoRoot = path.resolve(appDir, '..');
 export const plansDir = path.join(repoRoot, 'plans');
 export const recipesDir = path.join(repoRoot, 'recipes');
+// One picture per recipe, recipes/images/<slug>.jpg (recipes/images/README.md).
+export const recipeImagesDir = path.join(recipesDir, 'images');
 // The shareable template's starter library (absent in a household's own repo).
 export const starterDir = path.join(repoRoot, 'starter-recipes');
 export const promptsDir = path.join(appDir, 'prompts');

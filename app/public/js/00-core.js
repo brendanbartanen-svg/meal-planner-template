@@ -111,6 +111,16 @@ function dishParts(dish) {
   const m = s.match(/^(.{6,}?)\s+(with\s.+)$/i);
   return m ? [m[1], m[2].replace(/^With\b/, 'with')] : [s, ''];
 }
+/**
+ * The recipe's picture (`image` on recipes and meals: /recipe-images/<slug>.jpg,
+ * set server-side when recipes/images/ has one). kind 'hero' = full-width 16:10,
+ * 'thumb' = 56px square. Decorative (the title says what it is), so alt="".
+ * No image → '' (no placeholder, no empty slot).
+ */
+const dishImg = (src, kind) => (src
+  ? `<img class="dishimg ${kind === 'hero' ? 'hero-img' : 'thumb'}" src="${esc(src)}" alt="" loading="lazy" decoding="async">` : '');
+/** A title block with the dish's thumbnail at its right; just the block when there is no image. */
+const withThumb = (src, inner) => (src ? `<div class="thumbrow"><div class="thumbtext">${inner}</div>${dishImg(src, 'thumb')}</div>` : inner);
 /** Escaped dish title whose hyphenated words never break at the hyphen ("Gochujang-Glazed"). */
 const keepHyphens = (s) => esc(s).replace(/[^\s-]+(?:-[^\s-]+)+/g, (w) => (w.length <= 22 ? `<span class="nw">${w}</span>` : w));
 /** Meta bits as "30 min · 570 cal · 40 g protein" spans with quiet separators. */

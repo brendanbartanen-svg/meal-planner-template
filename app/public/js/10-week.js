@@ -429,6 +429,7 @@ function renderWeek() {
     if (tonight) {
       rows.tonight.push({ flex: false, html: `<article class="day tonight hero" aria-label="Tonight">
         <div class="hero-top"><span class="tonightbadge">Tonight</span><span class="when">${m.day} ${dnum}</span>${badge}</div>
+        ${dishImg(m.image, 'hero')}
         ${title}
         ${meta ? `<div class="meta">${m.timeMin ? ico('clock') : ''}${meta}</div>` : ''}
         ${ctl}
@@ -441,8 +442,8 @@ function renderWeek() {
     rows[bucket].push({ flex: false, html: `<div class="day${bucket === 'earlier' ? ' past' : ''}">
       ${leaf}
       <div class="daybody">
-        ${badge ? `<div class="chiprow">${badge}</div>` : ''}
-        ${title}
+        ${withThumb(m.image, `${badge ? `<div class="chiprow">${badge}</div>` : ''}
+        ${title}`)}
         ${meta ? `<div class="meta">${meta}</div>` : ''}
         ${ctl}
         ${desc ? `<p class="why">${esc(desc)}</p>` : ''}

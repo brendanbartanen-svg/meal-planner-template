@@ -101,8 +101,8 @@ function renderRecipes() {
     const body = open ? recipeBodies.get(r.file) : undefined;
     const [head, side] = dishParts(r.name);
     html += `<details class="recipe" data-file="${esc(r.file)}"${open ? ' open' : ''}>
-      <summary><h3>${keepHyphens(head)} ${thisWeekFiles.has(r.file) ? '<span class="tagfav">this week</span>' : ''}</h3>${side ? `<p class="with">${esc(side)}</p>` : ''}
-      <div class="meta">${esc(bits)}</div></summary>
+      <summary${r.image ? ' class="hasimg"' : ''}>${r.image ? `${dishImg(r.image, 'thumb')}<div class="sumtext">` : ''}<h3>${keepHyphens(head)} ${thisWeekFiles.has(r.file) ? '<span class="tagfav">this week</span>' : ''}</h3>${side ? `<p class="with">${esc(side)}</p>` : ''}
+      <div class="meta">${esc(bits)}</div>${r.image ? '</div>' : ''}</summary>
       <div class="rbody">
         <div class="ractions"><button class="ghost" data-cookthis="${esc(r.file)}">Cook this${ico('arrow')}</button></div>
         <div class="rmd">${body ?? '<p style="color:var(--mut)">loading…</p>'}</div>
