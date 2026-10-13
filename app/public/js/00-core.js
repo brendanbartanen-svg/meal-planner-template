@@ -628,6 +628,19 @@ function renderNavDots() {
 }
 
 /* ---------- run result card ---------- */
+/* A lock (or a chain ending in one) whose week has recipes with no picture yet:
+   one line pointing at /recipe-images on the Mac. Only that week's recipes. */
+function lockPicturesHtml(lr) {
+  if (!lr.ok || lr.type !== 'lock') return '';
+  const plan = [state.ahead, state.cooking].find((w) => w && w.week === lr.week)?.plan;
+  const missing = new Map((state.imagesMissing ?? []).map((m) => [m.file, m.name]));
+  const names = [...new Set((plan?.meals ?? []).map((m) => m.recipeFile).filter((f) => f && missing.has(f)))].map((f) => missing.get(f));
+  if (!names.length) return '';
+  const n = names.length;
+  const which = n <= 3 ? ` (${names.map(esc).join(', ')})` : '';
+  return `<div class="rbodytext"><p>Pictures: ${n} new recipe${n === 1 ? ' has' : 's have'} none yet${which} — run <code>/recipe-images</code> on the Mac once the list is final.</p></div>`;
+}
+
 function resultCard(forTypes) {
   const lr = state.run?.lastResult;
   if (!lr) return '';
@@ -663,12 +676,13 @@ function resultCard(forTypes) {
       <div class="rlabel">${esc(title)}</div>
       ${rs.map((r) => `<div class="rstep"><div class="rsteplabel">${esc([LABEL[r.type] || r.type, r.week && weekName(r.week, 'range')].filter(Boolean).join(' · '))}</div>
         <div class="rbodytext">${humanizeWeekIds(r.summaryHtml)}</div></div>`).join('')}
+      ${lockPicturesHtml(lr)}
     </div>`;
   }
   return `<div class="result ${lr.ok ? '' : 'err'}" id="result-card">
     <button class="dismiss" aria-label="Dismiss" onclick="dismissResult(${lr.at})">✕</button>
     <div class="rlabel">${esc(lr.ok ? named(lr.type, lr.week) : ['Run failed', lr.week && weekName(lr.week)].filter(Boolean).join(' · '))}</div>
-    <div class="rbodytext">${humanizeWeekIds(lr.summaryHtml)}</div>
+    <div class="rbodytext">${humanizeWeekIds(lr.summaryHtml)}</div>${lockPicturesHtml(lr)}
   </div>`;
 }
 window.dismissResult = (at) => { localStorage.setItem('mealapp-result-dismissed', String(at)); renderAll(); };

@@ -2,8 +2,10 @@
    plus collapsible cards above the library: Starter library (template only:
    starter-recipes/ via /api/starter, shown while any of it isn't in recipes/
    yet), Ideas (profile/ideas.md via /api/ideas: Queue / Not for me, "New
-   ideas" run) and Add a recipe (import from a link, a photo/PDF upload, or an
-   Android share; one import run each).
+   ideas" run), Add a recipe (import from a link, a photo/PDF upload, or an
+   Android share; one import run each) and Pictures to make (state.imagesMissing:
+   recipes with no recipes/images/<slug>.jpg yet; a to-do for /recipe-images on
+   the Mac, never a run).
    Classic script (not an ES module): index.html loads public/js/*.js in
    filename order and every top-level function/let/const is shared global
    scope across the files. Top-level code here may only use bindings from
@@ -82,7 +84,7 @@ function renderRecipes() {
   rs.sort(sorters[recipeSort] ?? sorters.rating);
 
   refreshRecipesTop();
-  let html = starterCardHtml() + ideasCardHtml() + addRecipeCardHtml() + `<div class="sortrow">Sort
+  let html = starterCardHtml() + ideasCardHtml() + addRecipeCardHtml() + picturesCardHtml() + `<div class="sortrow">Sort
     <select id="recipe-sort">
       <option value="rating" ${recipeSort === 'rating' ? 'selected' : ''}>by rating</option>
       <option value="recent" ${recipeSort === 'recent' ? 'selected' : ''}>recently cooked</option>
@@ -128,6 +130,8 @@ function renderRecipes() {
   v.onclick = (e) => {
     const b = e.target.closest('[data-cookthis]');
     if (b) { setCookRecipe(b.dataset.cookthis, true); return; }
+    const r = e.target.closest('[data-recipe]');
+    if (r) { e.preventDefault(); void openRecipe(r.dataset.recipe); return; }
     void recipesTopClick(e);
   };
 }
@@ -332,6 +336,23 @@ function ideasCardHtml() {
   </details>`;
 }
 
+/* Pictures to make: recipes with no picture yet (state.imagesMissing). A to-do,
+   not an action: pictures are made on the Mac by /recipe-images, never here. */
+const imageMissing = (file) => !!file && (state?.imagesMissing ?? []).some((m) => m.file === file);
+
+function picturesCardHtml() {
+  const list = state?.imagesMissing ?? [];
+  if (!list.length) return '';
+  const rows = list.map((m) => `<div class="share"><div class="stext"><b>${esc(m.name)}</b></div>
+    <button class="ghost" data-recipe="${esc(m.file)}">Open${ico('arrow')}</button></div>`).join('');
+  return `<details class="rcard pics" id="pics-card"${viewState.picsOpen ? ' open' : ''}>
+    <summary><span class="rcardtitle">Pictures to make</span><span class="rcardmeta">${list.length} recipe${list.length === 1 ? '' : 's'}</span></summary>
+    <div class="rcardbody">${rows}
+      <p class="hint">Made on the Mac with <code>/recipe-images</code> after the grocery list is final — one ChatGPT chat per picture. Shopping doesn’t need them.</p>
+    </div>
+  </details>`;
+}
+
 // The newest import that ran (by run start, so a re-imported upload counts).
 function lastImportRun(imports) {
   return imports.filter((r) => r.runAt).sort((a, b) => b.runAt - a.runAt)[0] ?? null;
@@ -353,6 +374,10 @@ function importResultHtml(imports) {
       : `<button class="ghost q" data-idea="${esc(slug)}" data-st="queued">Queue for next week</button>`}</div>`;
   } else if (ok && rec.recipeFile) {
     acts = `<p class="hint">recipes/${esc(rec.recipeFile)} wasn’t written (a mock run, or the run stopped short).</p>`;
+  }
+  // gone once the picture exists (state-updated re-renders the tab)
+  if (ok && rec.recipeExists && imageMissing(rec.recipeFile)) {
+    acts += '<p class="hint">Last step: run <code>/recipe-images</code> on the Mac for its picture.</p>';
   }
   return `<div class="result ${ok ? '' : 'err'}">
     <button class="dismiss" aria-label="Dismiss" data-act="imp-result-x" data-key="${esc(key)}">✕</button>
@@ -423,6 +448,7 @@ function wireRecipesTop(v) {
   keep('ideas-card', 'ideasOpen');
   keep('ideas-older', 'ideasOlderOpen');
   keep('add-card', 'addOpen');
+  keep('pics-card', 'picsOpen');
   keep('starter-card', 'starterOpen');
   v.querySelectorAll('input[data-starter]').forEach((box) => {
     box.onchange = () => {

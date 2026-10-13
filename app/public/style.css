@@ -781,6 +781,7 @@ details.older > summary{cursor:pointer;color:var(--olive);font-size:14px;font-we
 .picked .grow{flex:1;min-width:0;overflow-wrap:anywhere}
 .share{display:flex;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--rule)}
 .addlabel + .share{border-top:none}
+.rcardbody > .share:first-child{border-top:none;padding-top:0}
 .share .stext{flex:1;min-width:0;overflow-wrap:anywhere;font-size:15px;line-height:1.35}
 .share .stext small{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
 .share .stext small.ok{color:var(--olive-ink);font-weight:700}

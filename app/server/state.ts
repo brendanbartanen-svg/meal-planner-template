@@ -7,7 +7,7 @@ import type { ParsedPlan, PlanMeal } from './parse.ts';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { recipesDir, repoRoot } from './paths.ts';
-import { addRecipeMeta, readAllPlans } from './repo.ts';
+import { addRecipeMeta, readAllPlans, recipesWithoutImage } from './repo.ts';
 import { starterCounts } from './starter.ts';
 import { effectiveServings, foldPublic, runPublic } from './runs.ts';
 import { autoFoldOn, captures, checks, extras, feedback, typicalMs, type RunType, type WeekFeedback } from './store.ts';
@@ -212,6 +212,9 @@ export async function buildState() {
     feedback: fb ?? null,
     extras: extras[nextId] ?? [],
     setup: await setupStatus(plans.size),
+    // recipes with no picture yet, by name: the Pictures to make card and the
+    // lock / import result lines remind; /recipe-images on the Mac makes them
+    imagesMissing: await recipesWithoutImage(),
     // How to name each week id above (and in run / lastResult) to a person.
     weeks: weeksFor([
       addWeeks(curId, -1), curId, addWeeks(curId, 1), nextId,

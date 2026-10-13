@@ -285,12 +285,18 @@ console.log('\nrecipe description:');
 
   // recipe pictures: recipes/images/<slug>.jpg, discovered by filename (repo.ts recipeImages)
   console.log('\nrecipe images:');
-  const { recipeImages } = await import('../server/repo.ts');
+  const { recipeImages, recipesWithoutImage } = await import('../server/repo.ts');
   const images = await recipeImages();
   if (await pathExists(path.join(repoRoot, 'recipes/images/butter-chicken.jpg'))) {
     check('recipeImages: butter-chicken → /recipe-images/butter-chicken.jpg', images.get('butter-chicken') === '/recipe-images/butter-chicken.jpg', images.get('butter-chicken'));
   }
   check('recipeImages: the folder README is not an image', !images.has('README') && ![...images.values()].some((u) => /readme/i.test(u)), [...images.keys()]);
+  let pictured: string | undefined;
+  for (const slug of images.keys()) if (await pathExists(path.join(repoRoot, 'recipes', `${slug}.md`))) { pictured = slug; break; }
+  if (pictured) {
+    const missing = await recipesWithoutImage();
+    check(`recipesWithoutImage: ${pictured} has a picture, so it isn't reported`, !missing.some((m) => m.file === `${pictured}.md`), missing);
+  }
 }
 
 // ---- pantry editor core (server/pantry.ts) ----

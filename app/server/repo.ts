@@ -57,6 +57,29 @@ export async function readRecipes(): Promise<RecipeMeta[]> {
   return out;
 }
 
+/** A recipe with no picture yet (the app's /recipe-images reminders). */
+export interface ImageMissing { file: string; name: string }
+
+/**
+ * Every recipes/*.md (not README) whose slug has no picture in recipes/images/,
+ * sorted by name. A readdir plus the images map; only the files it reports are
+ * parsed (for their names), so on a fully pictured library nothing is read.
+ * The app only reminds: pictures are made on the Mac by /recipe-images.
+ */
+export async function recipesWithoutImage(): Promise<ImageMissing[]> {
+  let files: string[] = [];
+  try { files = (await fs.readdir(recipesDir)).filter((f) => f.endsWith('.md') && f !== 'README.md'); } catch { return []; }
+  const images = await recipeImages();
+  const out: ImageMissing[] = [];
+  for (const file of files) {
+    if (images.has(recipeSlug(file))) continue;
+    let name = recipeSlug(file);
+    try { name = parseRecipe(await fs.readFile(path.join(recipesDir, file), 'utf8'), file).meta.name; } catch { /* keep the slug */ }
+    out.push({ file, name });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * Join each meal of the given plans to its recipe file, by `recipeFile`: the
  * dish `description`, and the recipe's own active time and per-serving
